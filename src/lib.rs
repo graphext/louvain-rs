@@ -4,7 +4,7 @@
 #![allow(non_snake_case)]  // FIXME: Good while porting
 
 use std::collections::{HashMap, HashSet};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::iter::FromIterator;
 use std::ops::{AddAssign, SubAssign};
@@ -174,20 +174,20 @@ impl CommunityStructure {
                 cs.weights[*node_index] += weight;
                 let modularity_edge = ModEdge {source: *node_index, target: *neighbor_index, weight: weight};
                 cs.topology[*node_index].push(modularity_edge);
-                let adjCom = &cs.nodeCommunities[*neighbor_index];
+                let mut adjCom = &cs.nodeCommunities[*neighbor_index].borrow_mut();
 
-                cs.nodeConnectionsWeight[*node_index].insert(adjCom.borrow().id, weight);
-                cs.nodeConnectionsCount[*node_index].insert(adjCom.borrow().id, 1);
+                cs.nodeConnectionsWeight[*node_index].insert(adjCom.id, weight);
+                cs.nodeConnectionsCount[*node_index].insert(adjCom.id, 1);
 
-                let nodeCom = &cs.nodeCommunities[*node_index];
-                nodeCom.borrow().connectionsWeight.borrow_mut().insert(adjCom.borrow().id, weight);
-                nodeCom.borrow().connectionsCount.borrow_mut().insert(adjCom.borrow().id, 1);
+                let nodeCom = &cs.nodeCommunities[*node_index].borrow();
+                nodeCom.connectionsWeight.borrow_mut().insert(adjCom.id, weight);
+                nodeCom.connectionsCount.borrow_mut().insert(adjCom.id, 1);
 
-                cs.nodeConnectionsWeight[*neighbor_index].insert(nodeCom.borrow().id, weight);
-                cs.nodeConnectionsCount[*neighbor_index].insert(nodeCom.borrow().id, 1);
+                cs.nodeConnectionsWeight[*neighbor_index].insert(nodeCom.id, weight);
+                cs.nodeConnectionsCount[*neighbor_index].insert(nodeCom.id, 1);
 
-                adjCom.borrow_mut().connectionsWeight.borrow_mut().insert(nodeCom.borrow().id, weight);
-                adjCom.borrow_mut().connectionsCount.borrow_mut().insert(nodeCom.borrow().id, 1);
+                adjCom.connectionsWeight.borrow_mut().insert(nodeCom.id, weight);
+                adjCom.connectionsCount.borrow_mut().insert(nodeCom.id, 1);
 
                 cs.graphWeightSum += weight;
             }
@@ -252,7 +252,7 @@ impl CommunityStructure {
             }
         }
 
-        let mut community = self.nodeCommunities[node].borrow_mut();
+        let mut community = & self.nodeCommunities[node].borrow_mut();
 
         for e in &self.topology[node] {
             let neighbor = &e.target;
@@ -265,14 +265,27 @@ impl CommunityStructure {
 
             ///////////////////
             //Remove Adjacency Community's connection to this community
-            let mut adjCom = self.nodeCommunities[*neighbor].borrow_mut();
-            //let connectionsWeight = &adjCom.connectionsWeight;
-            //let connectionsCount = &adjCom.connectionsCount;
+            let adjCom = self.nodeCommunities[*neighbor].borrow();
             remove_node( &mut adjCom.connectionsWeight.borrow_mut(),
                 &mut adjCom.connectionsCount.borrow_mut(),
                 community.id, e.weight );
 
+            if node == *neighbor {
+                continue;
+            }
+
+            if adjCom.id != community.id {
+                let mut c = RefMut::map(*community, |t| [&mut t.connectionsWeight, &mut t.connectionsCount]);
+//                let mut counts = RefMut::map(*community, |t| &mut t.connectionsCount);
+                remove_node( &mut c.weights.borrow_mut(), &mut c.counts.borrow_mut(),
+                    adjCom.id, e.weight);
+            }
+
+            remove_node( &mut self.nodeConnectionsWeight[node],
+                &mut self.nodeConnectionsCount[node],
+                adjCom.id, e.weight );
         }
+        community.remove(node, self);
     }
 
 }
