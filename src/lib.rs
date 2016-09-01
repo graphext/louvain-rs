@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::iter::FromIterator;
 use std::ops::{AddAssign, SubAssign};
 
-struct Graph {
+pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
 }
@@ -55,7 +55,7 @@ pub struct Edge {
     weight: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ModEdge {
     source: usize,
     target: usize,
@@ -68,38 +68,46 @@ pub struct CommunityTag {
     color: u32,
 }
 
-#[derive(Default, PartialEq)]
-struct Community {
+#[derive(PartialEq)]
+struct Community <'cs, 'c: 'cs> {
     id: i32,
     weightSum: f32,
-//    structure: CommunityStructure,  Not here because of borrowing issues
+    structure: &'cs CommunityStructure<'cs, 'c>,
     nodes: Vec<usize>,
     connectionsWeight: RefCell<HashMap<i32, f32>>,
     connectionsCount: RefCell<HashMap<i32, i32>>,
 }
 
-impl Community {
 
-    fn new() -> Community {
-        Default::default()
+impl<'cs, 'c> Community<'cs, 'c> {
+
+    fn new(cs: &'cs CommunityStructure<'cs, 'c>) -> Community<'cs, 'c> {
+        Community {
+            id: Default::default(),
+            weightSum: Default::default(),
+            structure: cs ,
+            nodes: Default::default(),
+            connectionsWeight: Default::default(),
+            connectionsCount: Default::default(),
+        }
     }
 
-    fn seed(&mut self, node: usize, cs: & CommunityStructure) {
+    fn seed(&mut self, node: usize) {
         self.nodes.push(node);
-        self.weightSum += cs.weights[node];
+        self.weightSum += self.structure.weights[node];
     }
 
-    fn add(&mut self, node: usize, cs: & CommunityStructure) -> bool {
+    fn add(&mut self, node: usize) -> bool {
         self.nodes.push(node);
-        self.weightSum += cs.weights[node];
+        self.weightSum += self.structure.weights[node];
         true
     }
 
-    fn remove(&mut self, node: usize, cs: &mut CommunityStructure) -> bool {
+    fn remove(&mut self, node: usize) -> bool {
         self.nodes.remove(node);
-        self.weightSum -= cs.weights[node];
+        self.weightSum -= self.structure.weights[node];
         if self.nodes.is_empty() {
-            cs.communities.retain(|ref c| *c.borrow() != *self);
+            self.structure.communities.borrow_mut().retain(|ref c| *c.borrow() != *self);
         }
         true
     }
@@ -107,22 +115,23 @@ impl Community {
 
 }
 
-struct CommunityStructure {
+#[derive(Default, PartialEq)]
+pub struct CommunityStructure<'cs, 'c: 'cs> {
     nodeConnectionsWeight: Vec<HashMap<i32, f32>>,
     nodeConnectionsCount: Vec<HashMap<i32, i32>>,
-    nodeCommunities: Vec<Rc<RefCell<Community>>>,
+    nodeCommunities: Vec<Rc<RefCell<Community<'cs, 'c>>>>,
     map: HashMap<String, usize>,
     weights: Vec<f32>,
     graphWeightSum: f32,
     topology: Vec<Vec<ModEdge>>,
-    communities: Vec<Rc<RefCell<Community>>>,
+    communities: RefCell<Vec<Rc<RefCell<Community<'cs, 'c>>>>>,
     N: usize,
-    invMap: HashMap<usize, Community>,
+    invMap: HashMap<usize, Community<'cs, 'c>>,
 }
 
-impl CommunityStructure {
+impl<'cs, 'c> CommunityStructure<'cs, 'c> {
 
-    fn new(graph: &Graph, modularity: &Modularity) -> CommunityStructure {
+    pub fn new(graph: &Graph, modularity: &Modularity) -> CommunityStructure<'cs, 'c> {
         let N = graph.nodes.len();
         let mut cs = CommunityStructure {
             nodeConnectionsWeight: Vec::with_capacity(N),
@@ -132,7 +141,7 @@ impl CommunityStructure {
             weights: Vec::with_capacity(N),
             graphWeightSum: 0.0,
             topology: Vec::with_capacity(N),
-            communities: Vec::new(),
+            communities: RefCell::new(Vec::new()),
             N: N,
             invMap: HashMap::new(),
         };
@@ -140,19 +149,23 @@ impl CommunityStructure {
         let mut index: usize = 0;
         for node in & graph.nodes {
             cs.map.insert(node.id.clone(), index);
-            cs.nodeCommunities[index] = Rc::new(RefCell::new(Community::new()));
+            cs.nodeCommunities.push(Rc::new(RefCell::new(Community::new(& cs))));
 
-            cs.nodeConnectionsWeight[index] = HashMap::new();
-            cs.nodeConnectionsCount[index] = HashMap::new();
-            cs.weights[index] = 0.0;
-            cs.nodeCommunities[index].borrow_mut().seed(index, &cs);
+            cs.nodeConnectionsWeight.push(HashMap::new());
+            cs.nodeConnectionsCount.push(HashMap::new());
+            cs.weights.push(0.0);
+            cs.nodeCommunities[index].borrow_mut().seed(index);
 
-            let mut hidden = Community::new();
+            let mut hidden = Community::new(& cs);
             hidden.nodes.push(index);
             cs.invMap.insert(index, hidden);
 
-            cs.communities.push( cs.nodeCommunities[index].clone() );
+            cs.communities.borrow_mut().push( cs.nodeCommunities[index].clone() );
             index += 1;
+        }
+
+        unsafe {
+            cs.topology.set_len(graph.nodes.len());
         }
 
         for node in &graph.nodes {
@@ -197,7 +210,7 @@ impl CommunityStructure {
         cs
     }
 
-    fn addNodeTo(&mut self, node : usize, to: Rc<RefCell<Community>>) {
+    fn addNodeTo(&mut self, node : usize, to: Rc<RefCell<Community<'cs, 'c>>>) {
 
         fn add_node<V: AddAssign + Copy>(map : &mut HashMap<i32,V>, key: i32, weight: V) {
             let w = map.entry(key).or_insert(weight);
@@ -207,7 +220,7 @@ impl CommunityStructure {
         self.nodeCommunities[node] = to.clone();
 
         let mut com = to.borrow_mut();
-        com.add(node, & self);
+        com.add(node);
 
         for e in &self.topology[node] {
             let neighbor = &e.target;
@@ -232,7 +245,7 @@ impl CommunityStructure {
     }
 
 
-    fn removeNodeFromItsCommunity(&mut self, node: usize) {
+    pub fn removeNodeFromItsCommunity(&mut self, node: usize) {
 
         fn remove_node( weights_map : &mut HashMap<i32,f32>,
             count_map : &mut HashMap<i32,i32>,
@@ -252,46 +265,82 @@ impl CommunityStructure {
             }
         }
 
-        let mut community = & self.nodeCommunities[node].borrow_mut();
+        {
+            let community = self.nodeCommunities[node].borrow();
 
-        for e in &self.topology[node] {
-            let neighbor = &e.target;
+            for e in &self.topology[node] {
+                let neighbor = &e.target;
 
-            ////////
-            //Remove Node Connection to this community
-            remove_node( &mut self.nodeConnectionsWeight[*neighbor],
-                &mut self.nodeConnectionsCount[*neighbor],
-                community.id, e.weight );
+                ////////
+                //Remove Node Connection to this community
+                remove_node( &mut self.nodeConnectionsWeight[*neighbor],
+                    &mut self.nodeConnectionsCount[*neighbor],
+                    community.id.clone(), e.weight );
 
-            ///////////////////
-            //Remove Adjacency Community's connection to this community
-            let adjCom = self.nodeCommunities[*neighbor].borrow();
-            remove_node( &mut adjCom.connectionsWeight.borrow_mut(),
-                &mut adjCom.connectionsCount.borrow_mut(),
-                community.id, e.weight );
+                ///////////////////
+                //Remove Adjacency Community's connection to this community
+                let adjCom = self.nodeCommunities[*neighbor].borrow();
+                remove_node( &mut adjCom.connectionsWeight.borrow_mut(),
+                    &mut adjCom.connectionsCount.borrow_mut(),
+                    community.id.clone(), e.weight );
 
-            if node == *neighbor {
-                continue;
+                if node == *neighbor {
+                    continue;
+                }
+
+                if adjCom.id != community.id {
+                    remove_node( &mut community.connectionsWeight.borrow_mut(),
+                        &mut community.connectionsCount.borrow_mut(),
+                        adjCom.id, e.weight);
+                }
+
+                remove_node( &mut self.nodeConnectionsWeight[node],
+                    &mut self.nodeConnectionsCount[node],
+                    adjCom.id, e.weight );
             }
-
-            if adjCom.id != community.id {
-                let mut c = RefMut::map(*community, |t| [&mut t.connectionsWeight, &mut t.connectionsCount]);
-//                let mut counts = RefMut::map(*community, |t| &mut t.connectionsCount);
-                remove_node( &mut c.weights.borrow_mut(), &mut c.counts.borrow_mut(),
-                    adjCom.id, e.weight);
-            }
-
-            remove_node( &mut self.nodeConnectionsWeight[node],
-                &mut self.nodeConnectionsCount[node],
-                adjCom.id, e.weight );
         }
-        community.remove(node, self);
+        let mut community = self.nodeCommunities[node].borrow_mut();
+        community.remove(node);
+    }
+
+
+    fn moveNodeTo(&mut self, node: usize, to: Rc<RefCell<Community<'cs, 'c>>>) {
+        self.removeNodeFromItsCommunity(node);
+        self.addNodeTo(node, to);
+    }
+
+    fn zoomOut(&mut self) {
+        let M = self.communities.borrow().len();
+        let mut newTopology: Vec<Vec<ModEdge>> = Vec::with_capacity(M);
+        let mut index : usize = 0;
+        let mut nodeCommunities: Vec<Rc<RefCell<Community>>> = Vec::with_capacity(M);
+        let mut nodeConnectionsWeight: Vec<HashMap<i32, f32>> = Vec::with_capacity(M);
+        let mut nodeConnectionsCount: Vec<HashMap<i32, i32>> = Vec::with_capacity(M);
+        let mut newInvMap: HashMap<usize, Community> = HashMap::new();
+
+        for (i, com) in self.communities.borrow().iter().enumerate() {
+            nodeConnectionsWeight.push(HashMap::new());
+            nodeConnectionsCount.push(HashMap::new());
+
+            newTopology.push( Vec::new() );
+            nodeCommunities.push(Rc::new(RefCell::new(Community::new(& com.borrow().structure))));
+
+            // Set<Community> iter = com.connectionsWeight.keySet();
+            // double weightSum = 0;
+            //
+            // Community hidden = new Community(structure);
+            // for (Integer nodeInt : com.nodes) {
+            //     Community oldHidden = invMap.get(nodeInt);
+            //     hidden.nodes.addAll(oldHidden.nodes);
+            // }
+
+        }
     }
 
 }
 
 
-struct Modularity {
+pub struct Modularity {
     pub MODULARITY_CLASS: &'static str,
 //    progress: ProgressTicket,
     isCanceled: bool,
@@ -305,7 +354,7 @@ struct Modularity {
 
 impl Modularity {
 
-    fn new() -> Modularity {
+    pub fn new() -> Modularity {
         Modularity {
             MODULARITY_CLASS: "modularity_class",
             isCanceled: false,

@@ -8,7 +8,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 
-use louvain::{Node, Edge, compute_louvain};
+use louvain::{Node, Edge, Graph, Modularity, CommunityStructure};
 
 fn read_json<T>(file_path: &str) -> Vec<T>
     where T: serde::Deserialize
@@ -29,10 +29,17 @@ fn read_json<T>(file_path: &str) -> Vec<T>
 
 
 fn main() {
+    println!("Reading files...");
     let nodes: Vec<Node> = read_json("../nodes.json");
     let edges: Vec<Edge> = read_json("../links.json");
 
-    compute_louvain( &nodes, &edges);
-    println!("{}", nodes.len());
-    println!("{}", edges.len());
+    //compute_louvain( &nodes, &edges);
+    println!("Nodes: {}", nodes.len());
+    println!("Edges: {}", edges.len());
+
+    let graph = Graph {nodes: nodes, edges: edges};
+    let modularity = Modularity::new();
+
+    println!("Creating CommunityStructure...");
+    let cs = CommunityStructure::new( & graph, & modularity);
 }
