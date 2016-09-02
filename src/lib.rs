@@ -5,8 +5,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::iter::FromIterator;
+use std::cmp::PartialEq;
 use std::ops::{AddAssign, SubAssign};
 
 pub struct Graph {
@@ -68,72 +69,106 @@ pub struct CommunityTag {
     color: u32,
 }
 
-#[derive(PartialEq)]
-struct Community <'cs, 'c: 'cs> {
-    id: i32,
+
+type CommunityId = i32;
+type CommunityStructureId = i32;
+
+#[derive(Debug, Default, PartialEq)]
+struct Community {
+    id: CommunityId,
     weightSum: f32,
-    structure: &'cs CommunityStructure<'cs, 'c>,
+    structure: CommunityStructureId,
     nodes: Vec<usize>,
-    connectionsWeight: RefCell<HashMap<i32, f32>>,
-    connectionsCount: RefCell<HashMap<i32, i32>>,
+    connectionsWeight: RefCell<HashMap<CommunityId, f32>>,
+    connectionsCount: RefCell<HashMap<CommunityId, i32>>,
 }
 
+impl Community {
 
-impl<'cs, 'c> Community<'cs, 'c> {
-
-    fn new(cs: &'cs CommunityStructure<'cs, 'c>) -> Community<'cs, 'c> {
-        Community {
-            id: Default::default(),
-            weightSum: Default::default(),
-            structure: cs ,
-            nodes: Default::default(),
-            connectionsWeight: Default::default(),
-            connectionsCount: Default::default(),
-        }
+    fn new(id: CommunityId, cs_id: CommunityStructureId) -> Community {
+        Community { id: id, structure: cs_id, ..Default::default() }
     }
 
-    fn seed(&mut self, node: usize) {
+    fn seed(&mut self, node: usize, csc: & CommunityStructureCatalog) {
         self.nodes.push(node);
-        self.weightSum += self.structure.weights[node];
+        let cs = csc.map.get(&self.structure).unwrap();
+        self.weightSum += cs.weights[node];
     }
 
-    fn add(&mut self, node: usize) -> bool {
+    fn add(&mut self, node: usize, csc: & CommunityStructureCatalog) -> bool {
         self.nodes.push(node);
-        self.weightSum += self.structure.weights[node];
+        let cs = csc.map.get(&self.structure).unwrap();
+        self.weightSum += cs.weights[node];
         true
     }
 
-    fn remove(&mut self, node: usize) -> bool {
+    fn remove(&mut self, node: usize, csc: &mut CommunityStructureCatalog) -> bool {
         self.nodes.remove(node);
-        self.weightSum -= self.structure.weights[node];
+        let mut cs = csc.map.get_mut(&self.structure).unwrap();
+        self.weightSum -= cs.weights[node];
         if self.nodes.is_empty() {
-            self.structure.communities.borrow_mut().retain(|ref c| *c.borrow() != *self);
+            cs.communities.retain(|&c| c != self.id);
         }
         true
     }
 
 
 }
+
+#[derive(Default)]
+pub struct CommunityCatalog {
+    lastId: CommunityId,
+    map: HashMap<CommunityId, Community>
+}
+
+impl CommunityCatalog {
+    fn createNew(&mut self, cs_id: CommunityStructureId) -> CommunityId {
+        self.lastId += 1;
+        self.map.insert(self.lastId, Community::new(self.lastId, cs_id));
+        self.lastId
+    }
+}
+
+#[derive(Default)]
+pub struct CommunityStructureCatalog {
+    lastId: CommunityStructureId,
+    map: HashMap<CommunityStructureId, CommunityStructure>
+}
+
+impl CommunityStructureCatalog {
+    fn createNew(&mut self, graph: &Graph, modularity: &Modularity,
+            cc: &mut CommunityCatalog) -> CommunityStructureId {
+        self.lastId += 1;
+        let cs = CommunityStructure::new(self.lastId, graph, modularity, cc, self);
+        self.map.insert(self.lastId, cs);
+        self.lastId
+    }
+}
+
 
 #[derive(Default, PartialEq)]
-pub struct CommunityStructure<'cs, 'c: 'cs> {
-    nodeConnectionsWeight: Vec<HashMap<i32, f32>>,
-    nodeConnectionsCount: Vec<HashMap<i32, i32>>,
-    nodeCommunities: Vec<Rc<RefCell<Community<'cs, 'c>>>>,
+pub struct CommunityStructure {
+    id: CommunityStructureId,
+    nodeConnectionsWeight: Vec<HashMap<CommunityId, f32>>,
+    nodeConnectionsCount: Vec<HashMap<CommunityId, i32>>,
+    nodeCommunities: Vec<CommunityId>,
     map: HashMap<String, usize>,
     weights: Vec<f32>,
     graphWeightSum: f32,
     topology: Vec<Vec<ModEdge>>,
-    communities: RefCell<Vec<Rc<RefCell<Community<'cs, 'c>>>>>,
+    communities: Vec<CommunityId>,
     N: usize,
-    invMap: HashMap<usize, Community<'cs, 'c>>,
+    invMap: HashMap<usize, CommunityId>,
 }
 
-impl<'cs, 'c> CommunityStructure<'cs, 'c> {
+impl CommunityStructure {
 
-    pub fn new(graph: &Graph, modularity: &Modularity) -> CommunityStructure<'cs, 'c> {
+    pub fn new(cs_id: CommunityStructureId, graph: &Graph, modularity: &Modularity,
+            cc: &mut CommunityCatalog,
+            csc: &mut CommunityStructureCatalog) -> CommunityStructure {
         let N = graph.nodes.len();
         let mut cs = CommunityStructure {
+            id: cs_id,
             nodeConnectionsWeight: Vec::with_capacity(N),
             nodeConnectionsCount: Vec::with_capacity(N),
             nodeCommunities: Vec::with_capacity(N),
@@ -141,7 +176,7 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
             weights: Vec::with_capacity(N),
             graphWeightSum: 0.0,
             topology: Vec::with_capacity(N),
-            communities: RefCell::new(Vec::new()),
+            communities: Vec::new(),
             N: N,
             invMap: HashMap::new(),
         };
@@ -149,18 +184,18 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
         let mut index: usize = 0;
         for node in & graph.nodes {
             cs.map.insert(node.id.clone(), index);
-            cs.nodeCommunities.push(Rc::new(RefCell::new(Community::new(& cs))));
+            cs.nodeCommunities.push( cc.createNew(cs_id) );
 
             cs.nodeConnectionsWeight.push(HashMap::new());
             cs.nodeConnectionsCount.push(HashMap::new());
             cs.weights.push(0.0);
-            cs.nodeCommunities[index].borrow_mut().seed(index);
+            cc.map.get_mut(& cs.nodeCommunities[index]).unwrap().seed(index, csc);
 
-            let mut hidden = Community::new(& cs);
-            hidden.nodes.push(index);
+            let hidden = cc.createNew(cs_id);
+            cc.map.get_mut(& hidden).unwrap().nodes.push(index);
             cs.invMap.insert(index, hidden);
 
-            cs.communities.borrow_mut().push( cs.nodeCommunities[index].clone() );
+            cs.communities.push( cs.nodeCommunities[index] );
             index += 1;
         }
 
@@ -187,12 +222,12 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
                 cs.weights[*node_index] += weight;
                 let modularity_edge = ModEdge {source: *node_index, target: *neighbor_index, weight: weight};
                 cs.topology[*node_index].push(modularity_edge);
-                let mut adjCom = &cs.nodeCommunities[*neighbor_index].borrow_mut();
+                let mut adjCom = cc.map.get(&cs.nodeCommunities[*neighbor_index]).unwrap();
 
                 cs.nodeConnectionsWeight[*node_index].insert(adjCom.id, weight);
                 cs.nodeConnectionsCount[*node_index].insert(adjCom.id, 1);
 
-                let nodeCom = &cs.nodeCommunities[*node_index].borrow();
+                let nodeCom = cc.map.get(&cs.nodeCommunities[*node_index]).unwrap();
                 nodeCom.connectionsWeight.borrow_mut().insert(adjCom.id, weight);
                 nodeCom.connectionsCount.borrow_mut().insert(adjCom.id, 1);
 
@@ -210,17 +245,18 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
         cs
     }
 
-    fn addNodeTo(&mut self, node : usize, to: Rc<RefCell<Community<'cs, 'c>>>) {
+    fn addNodeTo(&mut self, node : usize, com: &mut Community,
+                cc: &mut CommunityCatalog,
+                csc: &mut CommunityStructureCatalog) {
 
         fn add_node<V: AddAssign + Copy>(map : &mut HashMap<i32,V>, key: i32, weight: V) {
             let w = map.entry(key).or_insert(weight);
             *w += weight;
         }
 
-        self.nodeCommunities[node] = to.clone();
+        self.nodeCommunities[node] = com.id.clone();
 
-        let mut com = to.borrow_mut();
-        com.add(node);
+        com.add(node, csc);
 
         for e in &self.topology[node] {
             let neighbor = &e.target;
@@ -228,7 +264,7 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
             add_node(&mut self.nodeConnectionsWeight[*neighbor], com.id, e.weight);
             add_node(&mut self.nodeConnectionsCount[*neighbor], com.id, 1);
 
-            let mut adjCom = self.nodeCommunities[*neighbor].borrow_mut();
+            let mut adjCom = cc.map.get_mut(& self.nodeCommunities[*neighbor]).unwrap();
 
             add_node(&mut adjCom.connectionsWeight.borrow_mut(), com.id, e.weight);
             add_node(&mut adjCom.connectionsCount.borrow_mut(), com.id, 1);
@@ -245,7 +281,9 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
     }
 
 
-    pub fn removeNodeFromItsCommunity(&mut self, node: usize) {
+    pub fn removeNodeFromItsCommunity(&mut self, node: usize,
+            cc: &mut CommunityCatalog,
+            csc: &mut CommunityStructureCatalog) {
 
         fn remove_node( weights_map : &mut HashMap<i32,f32>,
             count_map : &mut HashMap<i32,i32>,
@@ -266,7 +304,7 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
         }
 
         {
-            let community = self.nodeCommunities[node].borrow();
+            let community = cc.map.get(& self.nodeCommunities[node]).unwrap();
 
             for e in &self.topology[node] {
                 let neighbor = &e.target;
@@ -279,7 +317,7 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
 
                 ///////////////////
                 //Remove Adjacency Community's connection to this community
-                let adjCom = self.nodeCommunities[*neighbor].borrow();
+                let adjCom = cc.map.get(& self.nodeCommunities[*neighbor]).unwrap();
                 remove_node( &mut adjCom.connectionsWeight.borrow_mut(),
                     &mut adjCom.connectionsCount.borrow_mut(),
                     community.id.clone(), e.weight );
@@ -299,31 +337,35 @@ impl<'cs, 'c> CommunityStructure<'cs, 'c> {
                     adjCom.id, e.weight );
             }
         }
-        let mut community = self.nodeCommunities[node].borrow_mut();
-        community.remove(node);
+        let mut community = cc.map.get_mut(& self.nodeCommunities[node]).unwrap();
+        community.remove(node, csc);
     }
 
 
-    fn moveNodeTo(&mut self, node: usize, to: Rc<RefCell<Community<'cs, 'c>>>) {
-        self.removeNodeFromItsCommunity(node);
-        self.addNodeTo(node, to);
+    fn moveNodeTo(&mut self, node: usize, to: &mut Community,
+            cc: &mut CommunityCatalog,
+            csc: &mut CommunityStructureCatalog) {
+        self.removeNodeFromItsCommunity(node, cc, csc);
+        self.addNodeTo(node, to, cc, csc);
     }
 
-    fn zoomOut(&mut self) {
-        let M = self.communities.borrow().len();
+    fn zoomOut(&mut self,
+            cc: &mut CommunityCatalog,
+            csc: &mut CommunityStructureCatalog) {
+        let M = self.communities.len();
         let mut newTopology: Vec<Vec<ModEdge>> = Vec::with_capacity(M);
         let mut index : usize = 0;
-        let mut nodeCommunities: Vec<Rc<RefCell<Community>>> = Vec::with_capacity(M);
-        let mut nodeConnectionsWeight: Vec<HashMap<i32, f32>> = Vec::with_capacity(M);
-        let mut nodeConnectionsCount: Vec<HashMap<i32, i32>> = Vec::with_capacity(M);
-        let mut newInvMap: HashMap<usize, Community> = HashMap::new();
+        let mut nodeCommunities: Vec<CommunityId> = Vec::with_capacity(M);
+        let mut nodeConnectionsWeight: Vec<HashMap<CommunityId, f32>> = Vec::with_capacity(M);
+        let mut nodeConnectionsCount: Vec<HashMap<CommunityId, i32>> = Vec::with_capacity(M);
+        let mut newInvMap: HashMap<usize, CommunityId> = HashMap::new();
 
-        for (i, com) in self.communities.borrow().iter().enumerate() {
+        for (i, com) in self.communities.iter().enumerate() {
             nodeConnectionsWeight.push(HashMap::new());
             nodeConnectionsCount.push(HashMap::new());
 
             newTopology.push( Vec::new() );
-            nodeCommunities.push(Rc::new(RefCell::new(Community::new(& com.borrow().structure))));
+            nodeCommunities.push(cc.createNew(self.id));
 
             // Set<Community> iter = com.connectionsWeight.keySet();
             // double weightSum = 0;
