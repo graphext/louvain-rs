@@ -8,7 +8,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 
-use louvain::{Node, Edge, Graph, Modularity, CommunityStructure, CommunityCatalog};
+use louvain::{Node, Edge, Graph, Modularity, CommunityStructure};
 
 fn read_json<T>(file_path: &str) -> Vec<T>
     where T: serde::Deserialize
@@ -38,9 +38,8 @@ fn main() {
     println!("Edges: {}", edges.len());
 
     let graph = Graph {nodes: nodes, edges: edges};
-    let modularity = Modularity::new();
+    let mut modularity = Modularity::new();
 
     println!("Creating CommunityStructure...");
-    let mut cc : CommunityCatalog = Default::default();
-    let cs = CommunityStructure::new( & graph, & modularity, &mut cc);
+    let cs = CommunityStructure::new( & graph, &mut modularity);
 }

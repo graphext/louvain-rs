@@ -141,9 +141,9 @@ pub struct CommunityStructure {
 
 impl CommunityStructure {
 
-    pub fn new(graph: &Graph, modularity: &Modularity,
-            cc: &mut CommunityCatalog) -> CommunityStructure {
+    pub fn new(graph: &Graph, modularity: &mut Modularity) -> CommunityStructure {
         let N = graph.nodes.len();
+        let mut cc = &mut modularity.cc;
         let mut cs = CommunityStructure {
             nodeConnectionsWeight: Vec::with_capacity(N),
             nodeConnectionsCount: Vec::with_capacity(N),
@@ -423,7 +423,7 @@ impl Modularity {
 
     pub fn execute(&mut self, graph: & Graph) {
 
-        //let structure = CommunityStructure::new( & graph, & self, self.cc);
+        let structure = CommunityStructure::new( & graph, self );
         // structure = new Modularity.CommunityStructure(graph);
         // int[] comStructure = new int[graph.getNodeCount()];
         //
