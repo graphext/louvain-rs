@@ -89,13 +89,12 @@ impl Community {
         Community { id: id, structure: cs_id, ..Default::default() }
     }
 
-    fn seed(&mut self, node: usize, csc: & CommunityStructureCatalog) {
+    fn seed(&mut self, node: usize, weights: & Vec<f32>) {
         self.nodes.push(node);
-        let cs = csc.map.get(&self.structure).unwrap();
-        self.weightSum += cs.weights[node];
+        self.weightSum += weights[node];
     }
 
-    fn add(&mut self, node: usize, csc: & CommunityStructureCatalog) -> bool {
+    fn add(&mut self, node: usize,  csc: & CommunityStructureCatalog) -> bool {
         self.nodes.push(node);
         let cs = csc.map.get(&self.structure).unwrap();
         self.weightSum += cs.weights[node];
@@ -122,7 +121,7 @@ pub struct CommunityCatalog {
 }
 
 impl CommunityCatalog {
-    fn createNew(&mut self, cs_id: CommunityStructureId) -> CommunityId {
+    pub fn createNew(&mut self, cs_id: CommunityStructureId) -> CommunityId {
         self.lastId += 1;
         self.map.insert(self.lastId, Community::new(self.lastId, cs_id));
         self.lastId
@@ -136,7 +135,7 @@ pub struct CommunityStructureCatalog {
 }
 
 impl CommunityStructureCatalog {
-    fn createNew(&mut self, graph: &Graph, modularity: &Modularity,
+    pub fn createNew(&mut self, graph: &Graph, modularity: &Modularity,
             cc: &mut CommunityCatalog) -> CommunityStructureId {
         self.lastId += 1;
         let cs = CommunityStructure::new(self.lastId, graph, modularity, cc, self);
@@ -189,7 +188,7 @@ impl CommunityStructure {
             cs.nodeConnectionsWeight.push(HashMap::new());
             cs.nodeConnectionsCount.push(HashMap::new());
             cs.weights.push(0.0);
-            cc.map.get_mut(& cs.nodeCommunities[index]).unwrap().seed(index, csc);
+            cc.map.get_mut(& cs.nodeCommunities[index]).unwrap().seed(index, & cs.weights);
 
             let hidden = cc.createNew(cs_id);
             cc.map.get_mut(& hidden).unwrap().nodes.push(index);
