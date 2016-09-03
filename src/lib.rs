@@ -74,7 +74,7 @@ type CommunityId = i32;
 type CommunityStructureId = i32;
 
 #[derive(Debug, Default, PartialEq)]
-struct Community {
+pub struct Community {
     id: CommunityId,
     weightSum: f32,
     structure: CommunityStructureId,
@@ -352,6 +352,7 @@ impl CommunityStructure {
             cc: &mut CommunityCatalog,
             csc: &mut CommunityStructureCatalog) {
         let M = self.communities.len();
+        self.communities.sort();
         let mut newTopology: Vec<Vec<ModEdge>> = Vec::with_capacity(M);
         let mut index : usize = 0;
         let mut nodeCommunities: Vec<CommunityId> = Vec::with_capacity(M);
@@ -359,23 +360,64 @@ impl CommunityStructure {
         let mut nodeConnectionsCount: Vec<HashMap<CommunityId, i32>> = Vec::with_capacity(M);
         let mut newInvMap: HashMap<usize, CommunityId> = HashMap::new();
 
-        for (i, com) in self.communities.iter().enumerate() {
+        for com_id in & self.communities {
             nodeConnectionsWeight.push(HashMap::new());
             nodeConnectionsCount.push(HashMap::new());
 
             newTopology.push( Vec::new() );
             nodeCommunities.push(cc.createNew(self.id));
 
-            // Set<Community> iter = com.connectionsWeight.keySet();
-            // double weightSum = 0;
-            //
-            // Community hidden = new Community(structure);
-            // for (Integer nodeInt : com.nodes) {
-            //     Community oldHidden = invMap.get(nodeInt);
-            //     hidden.nodes.addAll(oldHidden.nodes);
-            // }
+            let mut weightSum : f32 = 0.0;
+            let hidden_id = cc.createNew(self.id);
 
+            /*
+             * FIXME: two unnecessary clones of node vectors to content the Borrow Checker
+             */
+            let nodes = cc.map.get(com_id).unwrap().nodes.clone();
+            for nodeInt in nodes {
+                let oldHiddenNodes = {
+                    let oldHidden = cc.map.get(& self.invMap.get(&nodeInt).unwrap()).unwrap();
+                    oldHidden.nodes.clone()
+                };
+                let mut hidden = cc.map.get_mut(& hidden_id).unwrap();
+                hidden.nodes.extend(oldHiddenNodes);
+            }
+
+            newInvMap.insert(index, hidden_id);
+            {
+                let com = cc.map.get(com_id).unwrap();
+                for adjCom_id in com.connectionsWeight.borrow().keys() {
+                    let target = self.communities.binary_search(adjCom_id).unwrap();
+                    let weight = com.connectionsWeight.borrow().get(adjCom_id).unwrap().clone();
+                    weightSum += if target == index { 2.0 * weight} else { weight };
+
+                    let e = ModEdge {source: index, target: target, weight: weight};
+                    newTopology[index].push(e);
+                }
+            }
+            self.weights[index] = weightSum;
+            let com = cc.map.get_mut(& nodeCommunities[index]).unwrap();
+            let com_structure = com.structure;
+            com.seed(index, & csc.map.get(& com_structure).unwrap().weights);
+
+            index += 1;
         }
+        self.communities.clear(); // FIXME: Free communities in cc too
+
+        for i in 0..M {
+            let com = cc.map.get(& nodeCommunities[i]).unwrap();
+            self.communities.push(com.id);
+            for e in & newTopology[i] {
+                nodeConnectionsWeight[i].insert(nodeCommunities[e.target], e.weight);
+                nodeConnectionsCount[i].insert(nodeCommunities[e.target], 1);
+                com.connectionsWeight.borrow_mut().insert(nodeCommunities[e.target], e.weight);
+                com.connectionsCount.borrow_mut().insert(nodeCommunities[e.target], 1);
+            }
+        }
+
+        self.N = M;
+        self.topology = newTopology;
+        self.invMap = newInvMap;
     }
 
 }
