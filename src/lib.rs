@@ -20,6 +20,7 @@ pub struct Graph {
 
 impl Graph {
 
+
     fn getNeighbors(& self, node_id: & String) -> Vec<&String> {
         let mut neighbours = Vec::new();
         for edge in &self.edges {
@@ -30,7 +31,7 @@ impl Graph {
         neighbours
     }
 
-    fn getEdges(& self, source_id: &String, target_id: &String) -> Vec<&Edge> {
+    fn getParallelEdges(& self, source_id: &String, target_id: &String) -> Vec<&Edge> {
         let mut parallel_edges = Vec::new();
         for edge in &self.edges {
             if edge.source == *source_id && edge.target == *target_id {
@@ -38,6 +39,10 @@ impl Graph {
             }
         }
         parallel_edges
+    }
+
+    fn getDegree(& self, node_id: &String) -> i32 {
+        self.edges.iter().filter(|& edge| edge.source == *node_id ).count() as i32
     }
 }
 
@@ -197,7 +202,7 @@ impl CommunityStructure {
 
                 //Sum all parallel edges weight:
                 let mut weight : f32  = 0.0;
-                for edge in graph.getEdges(&node.id, neighbor) {
+                for edge in graph.getParallelEdges(&node.id, neighbor) {
                     weight += if modularity.useWeight {edge.weight} else {1.0};
                 }
 
@@ -248,13 +253,14 @@ impl CommunityStructure {
             add_node(&mut self.nodeConnectionsWeight[*neighbor], com_id, e.weight);
             add_node(&mut self.nodeConnectionsCount[*neighbor], com_id, 1);
 
-            let mut adjCom = cc.map.get_mut(& self.nodeCommunities[*neighbor]).unwrap();
+            let adjCom = cc.map.get(& self.nodeCommunities[*neighbor]).unwrap();
 
             add_node(&mut adjCom.connectionsWeight.borrow_mut(), com_id, e.weight);
             add_node(&mut adjCom.connectionsCount.borrow_mut(), com_id, 1);
 
             add_node(&mut self.nodeConnectionsWeight[node], adjCom.id, e.weight);
             add_node(&mut self.nodeConnectionsCount[node], adjCom.id, 1);
+
 
             if com_id != adjCom.id {
                 let com = cc.map.get(& com_id).unwrap();
@@ -430,8 +436,8 @@ impl Modularity {
 
     pub fn execute(&mut self, graph: & Graph) {
 
-        let structure = CommunityStructure::new( & graph, self );
-        let comStructure : Vec<usize>= Vec::with_capacity(graph.nodes.len());
+        let mut structure = CommunityStructure::new( & graph, self );
+        let mut comStructure : Vec<usize>= vec![0, graph.nodes.len()];
 
         if !graph.nodes.is_empty() {
             let (modularity, modularityResolution) = self.computeModularity(graph, &mut structure, &mut comStructure);
@@ -447,13 +453,15 @@ impl Modularity {
     fn computeModularity(&mut self, graph: & Graph, cs : &mut CommunityStructure, comStructure: &mut Vec<usize>) -> (f64, f64) {
 
         let nodeDegrees = cs.weights.clone();
+        let totalWeight = cs.graphWeightSum;
+
         let mut someChange = true;
         while someChange {
             someChange = false;
             let mut localChange = true;
             while localChange {
                 localChange = false;
-                let start: usize = 0;
+                let mut start: usize = 0;
                 if self.isRandomized {
                     let mut rng = thread_rng();
                     start = sample(&mut rng, 1..cs.N, 1)[0];
@@ -461,7 +469,8 @@ impl Modularity {
 
                 for step in 0..cs.N {
                     let i = (step + start) % cs.N;
-                    if let Some(bestCommunity) = self.updateBestCommunity(cs, i, self.resolution) {
+                    let resolution = self.resolution;
+                    if let Some(bestCommunity) = self.updateBestCommunity(cs, i, resolution) {
                         if cs.nodeCommunities[i] != bestCommunity {
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
@@ -474,21 +483,48 @@ impl Modularity {
                 cs.zoomOut(&mut self.cc);
             }
         }
-        // fillComStructure(graph, theStructure, comStructure);
-        // double[] degreeCount = fillDegreeCount(graph, theStructure, comStructure, nodeDegrees, weighted);
-        //
-        // double computedModularity = finalQ(comStructure, degreeCount, graph, theStructure, totalWeight, 1., weighted);
-        // double computedModularityResolution = finalQ(comStructure, degreeCount, graph, theStructure, totalWeight, currentResolution, weighted);
-        //
-        // results.put("modularity", computedModularity);
-        // results.put("modularityResolution", computedModularityResolution);
-        //
-        // return results;
+        self.fillComStructure(cs, comStructure);
+        let degreeCount = self.fillDegreeCount(graph, cs, comStructure, & nodeDegrees);
+
+        let computedModularity = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, 1.);
+        let computedModularityResolution = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, self.resolution);
+
+        (computedModularity, computedModularityResolution)
+    }
+
+    fn fillComStructure(&self, cs : & CommunityStructure, comStructure: &mut Vec<usize>) {
+        for (count, com_id) in cs.communities.iter().enumerate() {
+            let com = self.cc.map.get(com_id).unwrap();
+            for node in & com.nodes {
+                let hidden_id = cs.invMap.get(node).unwrap();
+                let hidden = self.cc.map.get(hidden_id).unwrap();
+                for nodeInt in & hidden.nodes {
+                    comStructure[* nodeInt] = count;
+                }
+            }
+        }
+    }
+
+    fn fillDegreeCount(&self, graph: & Graph, cs : & CommunityStructure,
+        comStructure: & Vec<usize>, nodeDegrees: & Vec<f64>) -> Vec<f64> {
+
+        let mut degreeCount : Vec<f64> = vec![0.0; cs.communities.len()];
+
+        for node in & graph.nodes {
+            let index = * cs.map.get(& node.id).unwrap();
+            if self.useWeight {
+                degreeCount[comStructure[index]] += nodeDegrees[index];
+            } else {
+                degreeCount[comStructure[index]] += graph.getDegree(& node.id) as f64;
+            }
+
+        }
+        degreeCount
     }
 
     fn updateBestCommunity(&mut self, cs: & CommunityStructure, node_id: usize, currentResolution: f64) -> Option<CommunityId> {
         let mut best = 0.0;
-        let bestCommunity: Option<CommunityId> = None;
+        let mut bestCommunity: Option<CommunityId> = None;
         for com_id in cs.nodeConnectionsWeight[node_id].keys() {
             let qValue = self.q(node_id, com_id, cs, currentResolution);
             if qValue > best {
@@ -518,6 +554,34 @@ impl Modularity {
         qValue
     }
 
+    fn finalQ(&self, comStructure: & Vec<usize>, degrees: & Vec<f64>, graph: & Graph,
+         cs: & CommunityStructure, totalWeight: f64, usedResolution: f64) -> f64 {
+
+        let mut res: f64 = 0.0;
+        let mut internal: Vec<f64> = vec![0.0; degrees.len()];
+        for node in & graph.nodes {
+            let n_index = * cs.map.get(& node.id).unwrap();
+            for edge in graph.edges.iter().filter(| & e| e.source == node.id) {
+                let neighbor = & edge.target;
+                if node.id == * neighbor {
+                    continue;
+                }
+                let neigh_index = * cs.map.get(neighbor).unwrap();
+                if comStructure[neigh_index] == comStructure[n_index] {
+                    if self.useWeight {
+                        internal[comStructure[neigh_index]] += edge.weight as f64;
+                    } else {
+                        internal[comStructure[neigh_index]] += 1.0;
+                    }
+                }
+            }
+        }
+        for i in 0..degrees.len() {
+            internal[i] /= 2.0;
+            res += usedResolution * (internal[i] / totalWeight) - (degrees[i] / (2.0 * totalWeight)).powi(2);
+        }
+        res
+    }
 
 }
 

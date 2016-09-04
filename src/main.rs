@@ -40,6 +40,9 @@ fn main() {
     let graph = Graph {nodes: nodes, edges: edges};
     let mut modularity = Modularity::new();
 
-    println!("Creating CommunityStructure...");
-    let cs = CommunityStructure::new( & graph, &mut modularity);
+    // println!("Creating CommunityStructure...");
+    // let cs = CommunityStructure::new( & graph, &mut modularity);
+
+    let result = modularity.execute(& graph);
+    println!("{:?}", result);
 }
