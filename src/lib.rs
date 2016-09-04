@@ -4,51 +4,65 @@
 #![allow(non_snake_case)]  // FIXME: Good while porting
 
 extern crate rand;
+extern crate petgraph;
 
 use std::collections::{HashMap, HashSet};
-use std::cell::{RefCell, RefMut};
-use std::rc::{Rc, Weak};
+use std::cell::{RefCell};
 use std::iter::FromIterator;
-use std::cmp::PartialEq;
-use std::ops::{AddAssign, SubAssign};
+use std::ops::{AddAssign};
 use rand::{thread_rng, sample};
+use petgraph::{Graph as PetGraph, Undirected};
+use petgraph::graph::{NodeIndex, EdgeIndex};
 
-pub struct Graph {
-    pub nodes: Vec<Node>,
-    pub edges: Vec<Edge>,
+type Graph = PetGraph<String, f32, Undirected, u32>;
+
+trait EasyGraph {
+    fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex;
 }
 
-impl Graph {
-
-
-    fn getNeighbors(& self, node_id: & String) -> Vec<&String> {
-        let mut neighbours = Vec::new();
-        for edge in &self.edges {
-            if edge.source == *node_id {
-                neighbours.push(&edge.target);
-            }
-        }
-        neighbours
-    }
-
-    fn getParallelEdges(& self, source_id: &String, target_id: &String) -> Vec<&Edge> {
-        let mut parallel_edges = Vec::new();
-        for edge in &self.edges {
-            if edge.source == *source_id && edge.target == *target_id {
-                parallel_edges.push(edge);
-            }
-        }
-        parallel_edges
-    }
-
-    fn getDegree(& self, node_id: &String) -> i32 {
-        self.edges.iter().filter(|& edge| edge.source == *node_id ).count() as i32
+impl EasyGraph for Graph {
+    fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex {
+        let (a, b) = self.edge_endpoints(edge).unwrap();
+        if a == node { b } else { a }
     }
 }
+// #[derive(Debug)]
+// pub struct Graph {
+//     pub nodes: Vec<Node>,
+//     pub edges: Vec<Edge>,
+// }
+//
+// impl Graph {
+//
+//
+//     fn getNeighbors(& self, node_id: & String) -> Vec<&String> {
+//         let mut neighbours = Vec::new();
+//         for edge in &self.edges {
+//             if edge.source == *node_id {
+//                 neighbours.push(&edge.target);
+//             }
+//         }
+//         neighbours
+//     }
+//
+//     fn getParallelEdges(& self, source_id: &String, target_id: &String) -> Vec<&Edge> {
+//         let mut parallel_edges = Vec::new();
+//         for edge in &self.edges {
+//             if edge.source == *source_id && edge.target == *target_id {
+//                 parallel_edges.push(edge);
+//             }
+//         }
+//         parallel_edges
+//     }
+//
+//     fn getDegree(& self, node_id: &String) -> i32 {
+//         self.edges.iter().filter(|& edge| edge.source == *node_id ).count() as i32
+//     }
+// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
-    id: String,
+    pub id: String,
     community: Option<CommunityTag>,
     // name: String,
     // _index: String,
@@ -59,9 +73,9 @@ pub struct Node {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Edge {
-    source: String,
-    target: String,
-    weight: f32,
+    pub source: String,
+    pub target: String,
+    pub weight: f32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -114,7 +128,7 @@ impl Community {
         self.nodes.remove(node);
         self.weightSum -= cs.weights[node] as f64;
         if self.nodes.is_empty() {
-            cs.communities.retain(|&c| c != self.id);
+            cs.communities.retain(|&c| c != self.id); // FIXME: Maybe remove from cc too
         }
         true
     }
@@ -122,7 +136,7 @@ impl Community {
 
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CommunityCatalog {
     lastId: CommunityId,
     map: HashMap<CommunityId, Community>
@@ -137,12 +151,12 @@ impl CommunityCatalog {
 }
 
 
-#[derive(Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct CommunityStructure {
     nodeConnectionsWeight: Vec<HashMap<CommunityId, f32>>,
     nodeConnectionsCount: Vec<HashMap<CommunityId, i32>>,
     nodeCommunities: Vec<CommunityId>,
-    map: HashMap<String, usize>,
+    map: HashMap<NodeIndex, usize>,
     weights: Vec<f64>,
     graphWeightSum: f64,
     topology: Vec<Vec<ModEdge>>,
@@ -154,7 +168,7 @@ pub struct CommunityStructure {
 impl CommunityStructure {
 
     pub fn new(graph: &Graph, modularity: &mut Modularity) -> CommunityStructure {
-        let N = graph.nodes.len();
+        let N = graph.node_count();
         let mut cc = &mut modularity.cc;
         let mut cs = CommunityStructure {
             nodeConnectionsWeight: Vec::with_capacity(N),
@@ -170,8 +184,8 @@ impl CommunityStructure {
         };
 
         let mut index: usize = 0;
-        for node in & graph.nodes {
-            cs.map.insert(node.id.clone(), index);
+        for node in graph.node_indices() {
+            cs.map.insert(node.clone(), index);
             cs.nodeCommunities.push( cc.createNew() );
 
             cs.nodeConnectionsWeight.push(HashMap::new());
@@ -187,30 +201,33 @@ impl CommunityStructure {
             index += 1;
         }
 
-        unsafe {
-            cs.topology.set_len(graph.nodes.len());
-        }
+        for node in graph.node_indices() {
+            let node_index = cs.map.get(&node).unwrap();
 
-        for node in &graph.nodes {
-            let node_index = cs.map.get(&node.id).unwrap();
-            cs.topology[*node_index] = Vec::new();
+            cs.topology.push(Vec::new());
 
-            let uniqueNeighbors : HashSet<&String> = HashSet::from_iter(graph.getNeighbors(&node.id));
+            let uniqueNeighbors : HashSet<NodeIndex> = HashSet::from_iter(graph.neighbors(node));
             for neighbor in uniqueNeighbors {
-                if node.id == *neighbor { continue }
-                let neighbor_index = cs.map.get(neighbor).unwrap();
+                if node == neighbor { continue }
+                let neighbor_index = cs.map.get(& neighbor).unwrap();
 
                 //Sum all parallel edges weight:
                 let mut weight : f32  = 0.0;
-                for edge in graph.getParallelEdges(&node.id, neighbor) {
-                    weight += if modularity.useWeight {edge.weight} else {1.0};
+
+                // FIXME: Check if PetGraph support parallel edges
+                // for edge in graph.getParallelEdges(&node.id, neighbor) {
+                //     weight += if modularity.useWeight {edge.weight} else {1.0};
+                // }
+                {
+                    let e = graph.find_edge(node, neighbor).unwrap();
+                    weight += if modularity.useWeight {graph[e]} else {1.0};
                 }
 
                 //Finally add a single edge with the summed weight of all parallel edges:
                 cs.weights[*node_index] += weight as f64;
                 let modularity_edge = ModEdge {source: *node_index, target: *neighbor_index, weight: weight};
                 cs.topology[*node_index].push(modularity_edge);
-                let mut adjCom = cc.map.get(&cs.nodeCommunities[*neighbor_index]).unwrap();
+                let adjCom = cc.map.get(&cs.nodeCommunities[*neighbor_index]).unwrap();
 
                 cs.nodeConnectionsWeight[*node_index].insert(adjCom.id, weight);
                 cs.nodeConnectionsCount[*node_index].insert(adjCom.id, 1);
@@ -239,7 +256,6 @@ impl CommunityStructure {
             let w = map.entry(key).or_insert(weight);
             *w += weight;
         }
-
         self.nodeCommunities[node] = com_id;
 
         {
@@ -261,7 +277,6 @@ impl CommunityStructure {
             add_node(&mut self.nodeConnectionsWeight[node], adjCom.id, e.weight);
             add_node(&mut self.nodeConnectionsCount[node], adjCom.id, 1);
 
-
             if com_id != adjCom.id {
                 let com = cc.map.get(& com_id).unwrap();
                 add_node(&mut com.connectionsWeight.borrow_mut(), adjCom.id, e.weight);
@@ -269,6 +284,8 @@ impl CommunityStructure {
             }
 
         }
+
+
     }
 
 
@@ -279,6 +296,8 @@ impl CommunityStructure {
             key: i32, weight: f32
         )
         {
+
+            println!("*** remove community {} from {:?}", key, weights_map);
             let count = count_map.get(&key).unwrap().clone();
 
             if count -1 == 0 {
@@ -295,6 +314,7 @@ impl CommunityStructure {
         {
             let community = cc.map.get(& self.nodeCommunities[node]).unwrap();
 
+            // println!("topology of node {:?}: {:?}", node,  &self.topology[node]);
             for e in &self.topology[node] {
                 let neighbor = &e.target;
 
@@ -326,8 +346,12 @@ impl CommunityStructure {
                     adjCom.id, e.weight );
             }
         }
-        let mut community = cc.map.get_mut(& self.nodeCommunities[node]).unwrap();
-        community.remove(node, self);
+        {
+            let mut community = cc.map.get_mut(& self.nodeCommunities[node]).unwrap();
+            community.remove(node, self);
+            println!("remove node from {:?}", community);
+        }
+        println!("{:?}", self.communities);
     }
 
 
@@ -437,9 +461,9 @@ impl Modularity {
     pub fn execute(&mut self, graph: & Graph) {
 
         let mut structure = CommunityStructure::new( & graph, self );
-        let mut comStructure : Vec<usize>= vec![0, graph.nodes.len()];
+        let mut comStructure : Vec<usize>= vec![0, graph.node_count()];
 
-        if !graph.nodes.is_empty() {
+        if graph.node_count() > 0 {
             let (modularity, modularityResolution) = self.computeModularity(graph, &mut structure, &mut comStructure);
             self.modularity = modularity;
             self.modularityResolution = modularityResolution;
@@ -471,6 +495,7 @@ impl Modularity {
                     let i = (step + start) % cs.N;
                     let resolution = self.resolution;
                     if let Some(bestCommunity) = self.updateBestCommunity(cs, i, resolution) {
+                        println!("bestCommunity {:?}", bestCommunity);
                         if cs.nodeCommunities[i] != bestCommunity {
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
@@ -480,6 +505,7 @@ impl Modularity {
                 someChange = localChange || someChange;
             }
             if someChange {
+                println!("Zooming Out: {}", cs.N);
                 cs.zoomOut(&mut self.cc);
             }
         }
@@ -510,12 +536,12 @@ impl Modularity {
 
         let mut degreeCount : Vec<f64> = vec![0.0; cs.communities.len()];
 
-        for node in & graph.nodes {
-            let index = * cs.map.get(& node.id).unwrap();
+        for node in graph.node_indices() {
+            let index = * cs.map.get(& node).unwrap();
             if self.useWeight {
                 degreeCount[comStructure[index]] += nodeDegrees[index];
             } else {
-                degreeCount[comStructure[index]] += graph.getDegree(& node.id) as f64;
+                degreeCount[comStructure[index]] += graph.edges(node).count() as f64;
             }
 
         }
@@ -559,17 +585,16 @@ impl Modularity {
 
         let mut res: f64 = 0.0;
         let mut internal: Vec<f64> = vec![0.0; degrees.len()];
-        for node in & graph.nodes {
-            let n_index = * cs.map.get(& node.id).unwrap();
-            for edge in graph.edges.iter().filter(| & e| e.source == node.id) {
-                let neighbor = & edge.target;
-                if node.id == * neighbor {
+        for node in graph.node_indices() {
+            let n_index = * cs.map.get(& node).unwrap();
+            for (neighbor, weight) in graph.edges(node) { // FIXME: check if getEdges() is inner edges
+                if node == neighbor {
                     continue;
                 }
-                let neigh_index = * cs.map.get(neighbor).unwrap();
+                let neigh_index = * cs.map.get(& neighbor).unwrap();
                 if comStructure[neigh_index] == comStructure[n_index] {
                     if self.useWeight {
-                        internal[comStructure[neigh_index]] += edge.weight as f64;
+                        internal[comStructure[neigh_index]] += * weight as f64;
                     } else {
                         internal[comStructure[neigh_index]] += 1.0;
                     }
