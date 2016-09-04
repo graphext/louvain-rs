@@ -7,3 +7,4 @@ authors = ["Juan Morales <crispamares@gmail.com>"]
 serde = "*"
 serde_json = "*"
 serde_macros = "*"
+rand = "*"
