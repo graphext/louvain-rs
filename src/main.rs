@@ -37,10 +37,10 @@ fn read_json<T>(file_path: &str) -> Vec<T>
 
 fn main() {
     println!("Reading files...");
-    let nodes: Vec<Node> = read_json("../miserables_nodes.json");
-    let edges: Vec<Edge> = read_json("../miserables_links.json");
-    // let nodes: Vec<Node> = read_json("../nodes.json");
-    // let edges: Vec<Edge> = read_json("../links.json");
+    // let nodes: Vec<Node> = read_json("../miserables_nodes.json");
+    // let edges: Vec<Edge> = read_json("../miserables_links.json");
+    let nodes: Vec<Node> = read_json("../nodes.json");
+    let edges: Vec<Edge> = read_json("../links.json");
 
     //compute_louvain( &nodes, &edges);
     println!("Nodes: {}", nodes.len());
@@ -55,6 +55,10 @@ fn main() {
         inv_map.insert(node.id, i);
     }
     for edge in edges {
+        // match graph.find_edge(*inv_map.get(&edge.source).unwrap(), *inv_map.get(&edge.target).unwrap()) {
+        //     Some(e) => println!("----> There is a parallel edge!!! {:?} -> {:?}", *inv_map.get(&edge.source).unwrap(), *inv_map.get(&edge.target).unwrap()),
+        //     None => ()
+        // }
         graph.add_edge(
             *inv_map.get(&edge.source).unwrap(),
             *inv_map.get(&edge.target).unwrap(),

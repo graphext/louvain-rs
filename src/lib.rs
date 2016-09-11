@@ -18,12 +18,23 @@ type Graph = PetGraph<String, f32, Undirected, u32>;
 
 trait EasyGraph {
     fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex;
+    fn getParallelEdges(&self, node: NodeIndex, neighbor: NodeIndex) -> Vec<&f32>;
 }
 
 impl EasyGraph for Graph {
     fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex {
         let (a, b) = self.edge_endpoints(edge).unwrap();
         if a == node { b } else { a }
+    }
+
+    fn getParallelEdges(&self, node: NodeIndex, neighbor: NodeIndex) -> Vec<&f32> {
+        let mut weights = vec![];
+        for (n, weight) in self.edges(node) {
+            if n == neighbor {
+                weights.push(weight);
+            }
+        }
+        weights
     }
 }
 // #[derive(Debug)]
@@ -125,7 +136,7 @@ impl Community {
     }
 
     fn remove(&mut self, node: usize, cs: &mut CommunityStructure) -> bool {
-        self.nodes.remove(node);
+        self.nodes.retain(|&n| n != node);
         self.weightSum -= cs.weights[node] as f64;
         if self.nodes.is_empty() {
             cs.communities.retain(|&c| c != self.id); // FIXME: Maybe remove from cc too
@@ -213,14 +224,8 @@ impl CommunityStructure {
 
                 //Sum all parallel edges weight:
                 let mut weight : f32  = 0.0;
-
-                // FIXME: Check if PetGraph support parallel edges
-                // for edge in graph.getParallelEdges(&node.id, neighbor) {
-                //     weight += if modularity.useWeight {edge.weight} else {1.0};
-                // }
-                {
-                    let e = graph.find_edge(node, neighbor).unwrap();
-                    weight += if modularity.useWeight {graph[e]} else {1.0};
+                for &w in graph.getParallelEdges(node, neighbor) {
+                    weight += if modularity.useWeight {w} else {1.0};
                 }
 
                 //Finally add a single edge with the summed weight of all parallel edges:
@@ -252,8 +257,8 @@ impl CommunityStructure {
 
     fn addNodeTo(&mut self, node : usize, com_id: CommunityId, cc: &mut CommunityCatalog) {
 
-        fn add_node<V: AddAssign + Copy>(map : &mut HashMap<i32,V>, key: i32, weight: V) {
-            let w = map.entry(key).or_insert(weight);
+        fn add_node<V:AddAssign + Copy + From<u8> >(map : &mut HashMap<i32,V>, key: i32, weight: V) {
+            let w = map.entry(key).or_insert(V::from(0));
             *w += weight;
         }
         self.nodeCommunities[node] = com_id;
@@ -297,7 +302,7 @@ impl CommunityStructure {
         )
         {
 
-            println!("*** remove community {} from {:?}", key, weights_map);
+            println!("*** remove community {} from {:?}", key, count_map);
             let count = count_map.get(&key).unwrap().clone();
 
             if count -1 == 0 {
@@ -332,6 +337,7 @@ impl CommunityStructure {
                     community.id.clone(), e.weight );
 
                 if node == *neighbor {
+                    println!("\t----------  ------~~~~---", );
                     continue;
                 }
 
@@ -349,9 +355,9 @@ impl CommunityStructure {
         {
             let mut community = cc.map.get_mut(& self.nodeCommunities[node]).unwrap();
             community.remove(node, self);
-            println!("remove node from {:?}", community);
+            //println!("remove node from {:?}", community);
         }
-        println!("{:?}", self.communities);
+        //println!("{:?}", self.communities);
     }
 
 
@@ -458,10 +464,10 @@ impl Modularity {
         }
     }
 
-    pub fn execute(&mut self, graph: & Graph) {
+    pub fn execute(&mut self, graph: & Graph) -> (f64, f64){
 
         let mut structure = CommunityStructure::new( & graph, self );
-        let mut comStructure : Vec<usize>= vec![0, graph.node_count()];
+        let mut comStructure : Vec<usize>= vec![0; graph.node_count()];
 
         if graph.node_count() > 0 {
             let (modularity, modularityResolution) = self.computeModularity(graph, &mut structure, &mut comStructure);
@@ -472,6 +478,7 @@ impl Modularity {
             self.modularityResolution = 0.0;
         }
         // saveValues(comStructure, graph, structure);
+        (self.modularity, self.modularityResolution)
     }
 
     fn computeModularity(&mut self, graph: & Graph, cs : &mut CommunityStructure, comStructure: &mut Vec<usize>) -> (f64, f64) {
@@ -495,18 +502,21 @@ impl Modularity {
                     let i = (step + start) % cs.N;
                     let resolution = self.resolution;
                     if let Some(bestCommunity) = self.updateBestCommunity(cs, i, resolution) {
-                        println!("bestCommunity {:?}", bestCommunity);
+                        // println!("cs.nodeCommunities[{}] = {} -> bestCommunity {:?}", i, cs.nodeCommunities[i], bestCommunity);
                         if cs.nodeCommunities[i] != bestCommunity {
+                            println!("cs.nodeCommunities[{}] = {} -> bestCommunity {:?}", i, cs.nodeCommunities[i], bestCommunity);
+                            println!("-->");
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
                         }
                     }
                 }
                 someChange = localChange || someChange;
+                //println!("localChange: {}", localChange);
             }
             if someChange {
-                println!("Zooming Out: {}", cs.N);
                 cs.zoomOut(&mut self.cc);
+                println!("Zooming Out: {}", cs.N);
             }
         }
         self.fillComStructure(cs, comStructure);
@@ -570,11 +580,11 @@ impl Modularity {
         let nodeWeight: f64 = cs.weights[node];
         let mut qValue : f64 = currentResolution * edgesTo - (nodeWeight * weightSum) / (2.0 * cs.graphWeightSum);
 
-        let nodeCommunitie_len = self.cc.map.get(& cs.nodeCommunities[node]).unwrap().size();
-        if (cs.nodeCommunities[node] == *com_id) && (nodeCommunitie_len > 1) {
+        let nodeCommunities_len = self.cc.map.get(& cs.nodeCommunities[node]).unwrap().size();
+        if (cs.nodeCommunities[node] == *com_id) && (nodeCommunities_len > 1) {
             qValue = currentResolution * edgesTo - (nodeWeight * (weightSum - nodeWeight)) / (2.0 * cs.graphWeightSum);
         }
-        if (cs.nodeCommunities[node] == *com_id) && (nodeCommunitie_len == 1) {
+        if (cs.nodeCommunities[node] == *com_id) && (nodeCommunities_len == 1) {
             qValue = 0.0;
         }
         qValue
@@ -585,6 +595,7 @@ impl Modularity {
 
         let mut res: f64 = 0.0;
         let mut internal: Vec<f64> = vec![0.0; degrees.len()];
+
         for node in graph.node_indices() {
             let n_index = * cs.map.get(& node).unwrap();
             for (neighbor, weight) in graph.edges(node) { // FIXME: check if getEdges() is inner edges
