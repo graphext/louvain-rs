@@ -6,6 +6,7 @@ authors = ["Juan Morales <crispamares@gmail.com>"]
 [dependencies]
 serde = "*"
 serde_json = "*"
-serde_macros = "*"
+serde_derive = "*"
+
 rand = "*"
 petgraph = "*"

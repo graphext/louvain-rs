@@ -1,7 +1,8 @@
-#![feature(custom_derive, plugin)]
-#![plugin(serde_macros)]
-
+#![feature(proc_macro)]
 #![allow(non_snake_case)]  // FIXME: Good while porting
+
+#[macro_use]
+extern crate serde_derive;
 
 extern crate rand;
 extern crate petgraph;
@@ -13,6 +14,7 @@ use std::ops::{AddAssign};
 use rand::{thread_rng, sample};
 use petgraph::{Graph as PetGraph, Undirected};
 use petgraph::graph::{NodeIndex, EdgeIndex};
+use petgraph::visit::EdgeRef;
 
 type Graph = PetGraph<String, f32, Undirected, u32>;
 
@@ -29,9 +31,9 @@ impl EasyGraph for Graph {
 
     fn getParallelEdges(&self, node: NodeIndex, neighbor: NodeIndex) -> Vec<&f32> {
         let mut weights = vec![];
-        for (n, weight) in self.edges(node) {
-            if n == neighbor {
-                weights.push(weight);
+        for edge in self.edges(node) {
+            if edge.target() == neighbor {
+                weights.push(edge.weight());
             }
         }
         weights
@@ -302,7 +304,7 @@ impl CommunityStructure {
         )
         {
 
-            println!("*** remove community {} from {:?}", key, count_map);
+            // println!("*** remove community {} from {:?}", key, count_map);
             let count = count_map.get(&key).unwrap().clone();
 
             if count -1 == 0 {
@@ -598,14 +600,14 @@ impl Modularity {
 
         for node in graph.node_indices() {
             let n_index = * cs.map.get(& node).unwrap();
-            for (neighbor, weight) in graph.edges(node) { // FIXME: check if getEdges() is inner edges
-                if node == neighbor {
+            for edge in graph.edges(node) { // FIXME: check if getEdges() is inner edges
+                if node == edge.target() {
                     continue;
                 }
-                let neigh_index = * cs.map.get(& neighbor).unwrap();
+                let neigh_index = * cs.map.get(& edge.target()).unwrap();
                 if comStructure[neigh_index] == comStructure[n_index] {
                     if self.useWeight {
-                        internal[comStructure[neigh_index]] += * weight as f64;
+                        internal[comStructure[neigh_index]] += * edge.weight() as f64;
                     } else {
                         internal[comStructure[neigh_index]] += 1.0;
                     }
