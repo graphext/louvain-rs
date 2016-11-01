@@ -325,6 +325,7 @@ impl CommunityStructure {
             for e in &self.topology[node] {
                 let neighbor = &e.target;
 
+                // println!("neighbor connections of neighbor: {:?}", neighbor);
                 ////////
                 //Remove Node Connection to this community
                 remove_node( &mut self.nodeConnectionsWeight[*neighbor],
@@ -435,6 +436,9 @@ impl CommunityStructure {
         self.N = M;
         self.topology = newTopology;
         self.invMap = newInvMap;
+        self.nodeCommunities = nodeCommunities;
+        self.nodeConnectionsWeight = nodeConnectionsWeight;
+        self.nodeConnectionsCount = nodeConnectionsCount;
     }
 
 }
@@ -499,7 +503,6 @@ impl Modularity {
                     let mut rng = thread_rng();
                     start = sample(&mut rng, 1..cs.N, 1)[0];
                 }
-
                 for step in 0..cs.N {
                     let i = (step + start) % cs.N;
                     let resolution = self.resolution;
@@ -563,6 +566,7 @@ impl Modularity {
     fn updateBestCommunity(&mut self, cs: & CommunityStructure, node_id: usize, currentResolution: f64) -> Option<CommunityId> {
         let mut best = 0.0;
         let mut bestCommunity: Option<CommunityId> = None;
+        // println!("{:?} !!!!{:?}", node_id, cs.nodeConnectionsWeight[node_id]);
         for com_id in cs.nodeConnectionsWeight[node_id].keys() {
             let qValue = self.q(node_id, com_id, cs, currentResolution);
             if qValue > best {
