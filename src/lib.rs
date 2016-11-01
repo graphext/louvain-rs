@@ -321,11 +321,9 @@ impl CommunityStructure {
         {
             let community = cc.map.get(& self.nodeCommunities[node]).unwrap();
 
-            // println!("topology of node {:?}: {:?}", node,  &self.topology[node]);
             for e in &self.topology[node] {
                 let neighbor = &e.target;
 
-                // println!("neighbor connections of neighbor: {:?}", neighbor);
                 ////////
                 //Remove Node Connection to this community
                 remove_node( &mut self.nodeConnectionsWeight[*neighbor],
@@ -340,7 +338,6 @@ impl CommunityStructure {
                     community.id.clone(), e.weight );
 
                 if node == *neighbor {
-                    println!("\t----------  ------~~~~---", );
                     continue;
                 }
 
@@ -358,9 +355,7 @@ impl CommunityStructure {
         {
             let mut community = cc.map.get_mut(& self.nodeCommunities[node]).unwrap();
             community.remove(node, self);
-            //println!("remove node from {:?}", community);
         }
-        //println!("{:?}", self.communities);
     }
 
 
@@ -453,7 +448,8 @@ pub struct Modularity {
     isRandomized: bool,
     useWeight: bool,
     resolution: f64,
-    cc : CommunityCatalog
+    cc : CommunityCatalog,
+    pub communityByNode: Vec<usize>,
 }
 
 impl Modularity {
@@ -467,6 +463,7 @@ impl Modularity {
             useWeight: true,
             resolution: 1.0,
             cc: Default::default(),
+            communityByNode: Default::default()
         }
     }
 
@@ -484,6 +481,7 @@ impl Modularity {
             self.modularityResolution = 0.0;
         }
         // saveValues(comStructure, graph, structure);
+        self.communityByNode = comStructure;
         (self.modularity, self.modularityResolution)
     }
 
@@ -507,10 +505,7 @@ impl Modularity {
                     let i = (step + start) % cs.N;
                     let resolution = self.resolution;
                     if let Some(bestCommunity) = self.updateBestCommunity(cs, i, resolution) {
-                        // println!("cs.nodeCommunities[{}] = {} -> bestCommunity {:?}", i, cs.nodeCommunities[i], bestCommunity);
                         if cs.nodeCommunities[i] != bestCommunity {
-                            println!("cs.nodeCommunities[{}] = {} -> bestCommunity {:?}", i, cs.nodeCommunities[i], bestCommunity);
-                            println!("-->");
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
                         }
@@ -521,7 +516,7 @@ impl Modularity {
             }
             if someChange {
                 cs.zoomOut(&mut self.cc);
-                println!("Zooming Out: {}", cs.N);
+                // println!("Zooming Out: {} communities left", cs.N);
             }
         }
         self.fillComStructure(cs, comStructure);
@@ -529,6 +524,9 @@ impl Modularity {
 
         let computedModularity = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, 1.);
         let computedModularityResolution = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, self.resolution);
+
+        // let communities: Vec<&Community> = cs.communities.iter().map(|c| self.cc.map.get(c).unwrap()).collect();
+        // println!("{:?}", comStructure);
 
         (computedModularity, computedModularityResolution)
     }

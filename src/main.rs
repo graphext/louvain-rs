@@ -1,9 +1,15 @@
+#![feature(proc_macro)]
+
+#[macro_use]
+extern crate serde_derive;
+
 extern crate serde;
 extern crate serde_json;
 extern crate petgraph;
 
 extern crate louvain;
 
+use std::env;
 use std::path::Path;
 use std::error::Error;
 use std::fs::File;
@@ -15,6 +21,14 @@ use petgraph::graph::{NodeIndex};
 
 use louvain::{Node, Edge, Modularity};
 
+
+#[derive(Serialize, Debug, Default, Clone)]
+pub struct Community {
+    id: i32,
+    parent: i32,
+    nodes: Vec<usize>,
+    children: Vec<i32>,
+}
 
 
 fn read_json<T>(file_path: &str) -> Vec<T>
@@ -36,23 +50,24 @@ fn read_json<T>(file_path: &str) -> Vec<T>
 
 
 fn main() {
-    println!("Reading files...");
+    // println!("Reading files...");
     // let nodes: Vec<Node> = read_json("../miserables_nodes.json");
     // let edges: Vec<Edge> = read_json("../miserables_links.json");
-    let nodes: Vec<Node> = read_json("../nodes.json");
-    let edges: Vec<Edge> = read_json("../links.json");
+    let args : Vec<String> = env::args().collect();
+    let nodes: Vec<Node> = read_json(&args[1]);
+    let edges: Vec<Edge> = read_json(&args[2]);
 
     //compute_louvain( &nodes, &edges);
-    println!("Nodes: {}", nodes.len());
-    println!("Edges: {}", edges.len());
+    // println!("Nodes: {}", nodes.len());
+    // println!("Edges: {}", edges.len());
 
     //let graph = Graph {nodes: nodes, edges: edges};
 
     let mut inv_map: HashMap<String, NodeIndex> = HashMap::new();
     let mut graph = Graph::new_undirected();
-    for node in nodes {
+    for ref node in &nodes {
         let i = graph.add_node(node.id.clone());
-        inv_map.insert(node.id, i);
+        inv_map.insert(node.id.clone(), i);
     }
     for edge in edges {
         // match graph.find_edge(*inv_map.get(&edge.source).unwrap(), *inv_map.get(&edge.target).unwrap()) {
@@ -66,10 +81,23 @@ fn main() {
     }
 
     let mut modularity = Modularity::new();
-
-    // println!("Creating CommunityStructure...");
-    //let cs = CommunityStructure::new( & graph, &mut modularity);
-
     let result = modularity.execute(& graph);
-    println!("{:?}", result);
+    // println!("Modularity: {:?}", result);
+
+    let mut communities: Vec<Community> = vec![Default::default(); modularity.communityByNode.iter().max().unwrap_or(&0)+1];
+    communities.push(Community{
+        id:0,
+        parent:-1,
+        nodes: graph.node_indices().map(|i| i.index()).collect(),
+        children: Vec::new()
+    });
+
+    for (node, &com_id) in modularity.communityByNode.iter().enumerate() {
+        let com = com_id + 1;
+        communities[com].id = (com) as i32;
+        communities[com].parent = 0;
+        communities[com].nodes.push(node);
+    }
+
+    println!("{}", serde_json::to_string(&communities).unwrap());
 }
