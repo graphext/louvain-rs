@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Juan Morales <crispamares@gmail.com>"]
 
 [dependencies]
+chrono = "*"
+
 serde = "*"
 serde_json = "*"
 serde_derive = "*"
