@@ -1,14 +1,11 @@
-
 use serde;
 use serde_json;
 use std::path::Path;
 use std::fs::File;
-use std::io::Read;
-use std::io::Write;
 use std::error::Error;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
-pub struct NodeID(u32);
+pub struct NodeID(String);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
@@ -38,19 +35,17 @@ pub struct Community {
 }
 
 pub fn read_json_file<T>(file_path: &str) -> Vec<T>
-    where T: serde::Deserialize
+    where T: serde::de::DeserializeOwned
 {
     let path = Path::new(file_path);
 
-    let mut file = match File::open(&path) {
+    let file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", path.display(), why.description()),
         Ok(file) => file,
     };
 
-    let mut buffer = String::new();
-    file.read_to_string(&mut buffer).unwrap();
-
-    let array: Vec<T> = serde_json::from_str(&buffer).unwrap();
+    let array: Vec<T> = serde_json::from_reader(file).unwrap();
+    
     return array;
 }
 
@@ -60,12 +55,10 @@ pub fn write_json_file<T>(file_path: &str, array: &Vec<T>)
 {
     let path = Path::new(file_path);
 
-    let mut file = match File::create(&path) {
+    let file = match File::create(&path) {
         Err(why) => panic!("couldn't create {}: {}", path.display(), why.description()),
         Ok(file) => file,
     };
 
-    let buffer = serde_json::to_string(array).unwrap();
-
-    file.write_all(buffer.as_bytes()).unwrap();
+    serde_json::to_writer(file, array).unwrap();
 }
