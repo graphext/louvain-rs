@@ -25,6 +25,12 @@ fn main() {
     let nodes: Vec<Node> = read_json_file(&args[1]);
     let edges: Vec<Edge> = read_json_file(&args[2]);
 
+
+    let resolution : f64 = match args.get(3) {
+        Some(res) => res.parse().expect("Resolution should be a float. Default = 1.0"),
+        None => 1.0
+    };
+
     //compute_louvain( &nodes, &edges);
     // println!("Nodes: {}", nodes.len());
     // println!("Edges: {}", edges.len());
@@ -48,18 +54,21 @@ fn main() {
             edge.weight);
     }
 
-    let mut modularity = Modularity::new();
+    let mut modularity = Modularity::new(resolution);
     let start_time = chrono::UTC::now();
-    modularity.execute(& graph);
-    println!("Clusters compued in {:?}", chrono::UTC::now() - start_time);
+    let results = modularity.execute(& graph);
+    println!("Louvain Clusters computed in {:?}", chrono::UTC::now() - start_time);
 
-    let mut communities: Vec<Community> = vec![Default::default(); modularity.communityByNode.iter().max().unwrap_or(&0)+1];
-    communities.push(Community{
+    let num_of_communities = modularity.communityByNode.iter().max().unwrap_or(&0) + 2; // Parent Community included
+    println!("Number of Clusters: {:?} -  with resolution {:?}", num_of_communities-1, resolution);
+    println!("Final Modularity: {:?}", results);
+    let mut communities: Vec<Community> = vec![Default::default(); num_of_communities];
+    communities[0] = Community{
         id:0,
         parent:-1,
         nodes: graph.node_indices().map(|i| i.index()).collect(),
-        children: Vec::new()
-    });
+        children: (1.. num_of_communities as i32).collect()
+    };
 
     for (node, &com_id) in modularity.communityByNode.iter().enumerate() {
         let com = com_id + 1;

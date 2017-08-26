@@ -392,14 +392,17 @@ pub struct Modularity {
 
 impl Modularity {
 
-    pub fn new() -> Modularity {
+    /**
+     *  resolution:  1.0 More resolution produce less Clusters
+     */
+    pub fn new(resolution: f64) -> Modularity {
         Modularity {
             MODULARITY_CLASS: "modularity_class",
             modularity: 0.0,
             modularityResolution: 0.0,
             isRandomized: false,
             useWeight: true,
-            resolution: 1.0,
+            resolution: resolution,
             cc: Default::default(),
             communityByNode: Default::default()
         }
