@@ -10,3 +10,5 @@ serde_derive = "1"
 stdweb = "0.1.1"
 louvain = { path = ".." }
 petgraph = "*"
+
+chrono = "*"
