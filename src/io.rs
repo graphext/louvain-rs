@@ -51,6 +51,14 @@ pub fn read_json_file<T>(file_path: &str) -> Vec<T>
     return array;
 }
 
+pub fn read_from_string<T>(string: &str) -> Vec<T>
+    where T: serde::de::DeserializeOwned
+{
+    let array: Vec<T> = serde_json::from_str(string).unwrap();
+    return array;
+}
+
+
 
 pub fn write_json_file<T>(file_path: &str, array: &Vec<T>)
     where T: serde::Serialize
