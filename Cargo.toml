@@ -11,4 +11,5 @@ serde_json = "1"
 serde_derive = "1"
 
 rand = "*"
-petgraph = "*"
+petgraph = "0.4"
+slotmap = {version = "0.2", features = ["unstable"]}
