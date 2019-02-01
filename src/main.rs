@@ -18,10 +18,10 @@ fn main() {
     // let edges: Vec<Edge> = read_json_file("../miserables_links.json");
     let args : Vec<String> = env::args().collect();
     let nodes: Vec<Node> = read_json_file(&args[1]);
-    println!("Read nodes {:?}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Read nodes {}", chrono::Utc::now().signed_duration_since(start_time));
     start_time = chrono::Utc::now();
     let edges: Vec<Edge> = read_json_file(&args[2]);
-    println!("Read links {:?}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Read links {}", chrono::Utc::now().signed_duration_since(start_time));
 
     let resolution : f64 = match args.get(3) {
         Some(res) => res.parse().expect("Resolution should be a float. Default = 1.0"),
@@ -50,17 +50,17 @@ fn main() {
             *inv_map.get(&edge.target).unwrap(),
             edge.weight);
     }
-    println!("Construct the graph computed in {:?}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Construct the graph computed in {}", chrono::Utc::now().signed_duration_since(start_time));
 
 
     start_time = chrono::Utc::now();
     let mut modularity = Modularity::new(resolution);
     let results = modularity.execute(& graph);
-    println!("Louvain Clusters computed in {:?}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Louvain Clusters computed in {}", chrono::Utc::now().signed_duration_since(start_time));
 
     start_time = chrono::Utc::now();
     let num_of_communities = modularity.communityByNode.iter().max().unwrap_or(&0) + 2; // Parent Community included
-    println!("Number of Clusters: {:?} -  with resolution {:?}", num_of_communities-1, resolution);
+    println!("Number of Clusters: {} -  with resolution {}", num_of_communities-1, resolution);
     println!("Final Modularity: {:?}", results);
     let mut communities: Vec<Community> = vec![Default::default(); num_of_communities];
     communities[0] = Community{
@@ -80,5 +80,5 @@ fn main() {
     // println!("{:?}", communities);
 
     write_json_file("communities.json", &communities);
-    println!("Written communities {:?}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Written communities {}", chrono::Utc::now().signed_duration_since(start_time));
 }

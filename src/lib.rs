@@ -6,6 +6,7 @@ extern crate serde_json;
 extern crate rand;
 extern crate petgraph;
 extern crate slotmap;
+extern crate fnv;
 
 pub mod modularity;
 pub use self::modularity::Modularity;

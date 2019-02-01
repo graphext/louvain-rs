@@ -12,4 +12,5 @@ serde_derive = "1"
 
 rand = "*"
 petgraph = "0.4"
+fnv = "*"
 slotmap = {version = "0.2", features = ["unstable"]}
