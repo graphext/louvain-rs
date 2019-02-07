@@ -5,14 +5,12 @@ use fnv::{FnvHashMap as HashMap};
 use std::cell::{RefCell};
 use std::iter::FromIterator;
 use std::ops::{AddAssign};
-use rand::{thread_rng, sample};
+use rand::{thread_rng, seq};
 use petgraph::{Graph as PetGraph, Undirected};
 use petgraph::graph::{NodeIndex, EdgeIndex};
 use petgraph::visit::EdgeRef;
 use slotmap::SlotMap;
 use std::f32;
-
-use io::NodeID;
 
 type Graph<T> = PetGraph<T, f32, Undirected, u32>;
 
@@ -46,7 +44,7 @@ pub struct ModEdge {
 }
 
 
-type CommunityId = slotmap::Key;
+type CommunityId = slotmap::DefaultKey;
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Community {
@@ -91,7 +89,7 @@ impl Community {
 
 #[derive(Default, Debug)]
 pub struct CommunityCatalog {
-    map: SlotMap<Community>
+    map: SlotMap<CommunityId, Community>
 }
 
 impl CommunityCatalog {
@@ -151,7 +149,7 @@ impl CommunityStructure {
         let mut index: usize = 0;
         // Create one community and one inverse community per node
         // All weights to 0.0
-        for node in graph.node_indices() {
+        for _node in graph.node_indices() {
             //cs.map.insert(node.clone(), index);
             cs.nodeCommunities.push( cc.createNew() );
 
@@ -462,7 +460,7 @@ impl Modularity {
                 let mut start: usize = 0;
                 if self.isRandomized {
                     let mut rng = thread_rng();
-                    start = sample(&mut rng, 1..cs.N, 1)[0];
+                    start = seq::sample_iter(&mut rng, 1..cs.N, 1).unwrap()[0];
                 }
                 for step in 0..cs.N {
                     let i = (step + start) % cs.N;
@@ -485,8 +483,8 @@ impl Modularity {
         self.fillComStructure(cs, comStructure);
         let degreeCount = self.fillDegreeCount(graph, cs, comStructure, & nodeDegrees);
 
-        let computedModularity = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, 1.);
-        let computedModularityResolution = self.finalQ(comStructure, & degreeCount, graph, cs, totalWeight, self.resolution);
+        let computedModularity = self.finalQ(comStructure, & degreeCount, graph, totalWeight, 1.);
+        let computedModularityResolution = self.finalQ(comStructure, & degreeCount, graph, totalWeight, self.resolution);
 
         // let communities: Vec<&Community> = cs.communities.iter().map(|c| self.cc.get(c).unwrap()).collect();
         // println!("{:?}", comStructure);
@@ -563,8 +561,7 @@ impl Modularity {
         qValue
     }
 
-    fn finalQ<T>(&self, comStructure: & Vec<usize>, degrees: & Vec<f64>, graph: & Graph<T>,
-         cs: & CommunityStructure, totalWeight: f64, usedResolution: f64) -> f64 {
+    fn finalQ<T>(&self, comStructure: & Vec<usize>, degrees: & Vec<f64>, graph: & Graph<T>, totalWeight: f64, usedResolution: f64) -> f64 {
 
         let mut res: f64 = 0.0;
         let mut internal: Vec<f64> = vec![0.0; degrees.len()];
@@ -595,6 +592,7 @@ impl Modularity {
 
 // AUX functions
 
+#[allow(dead_code)]
 fn check_weights(cc: &CommunityCatalog, cs: &CommunityStructure) -> bool {
     for i in 0..cs.nodeCommunities.len() - 1 {
         let com0 = cc.get(&cs.nodeCommunities[i]).unwrap();
