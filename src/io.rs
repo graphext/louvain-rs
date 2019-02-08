@@ -5,8 +5,7 @@ use std::io::Read;
 use std::fs::File;
 use std::error::Error;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
-pub struct NodeID(u32);
+pub type NodeID = u32;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
