@@ -398,31 +398,30 @@ impl CommunityStructure {
 
 
 pub struct Modularity {
-    pub MODULARITY_CLASS: &'static str,
-//    progress: ProgressTicket,
-//    structure: CommunityStructure,
     modularity: f64,
     modularityResolution: f64,
     isRandomized: bool,
     useWeight: bool,
     resolution: f64,
+    noise: u32,
     cc : CommunityCatalog,
-    pub communityByNode: Vec<usize>,
+    pub communityByNode: Vec<i32>,
 }
 
 impl Modularity {
     
-    /**
-     *  resolution:  1.0 More resolution produce less Clusters
-     */
-    pub fn new(resolution: f64) -> Modularity {
+    ///
+    /// resolution:  1.0 More resolution produce less Clusters
+    /// noise:  0 clusters with number_of_nodes <= noise are considered noise (-1 tag)
+    /// 
+    pub fn new(resolution: f64, noise: u32) -> Modularity {
         Modularity {
-            MODULARITY_CLASS: "modularity_class",
             modularity: 0.0,
             modularityResolution: 0.0,
             isRandomized: false,
             useWeight: true,
             resolution: resolution,
+            noise: noise,
             cc: Default::default(),
             communityByNode: Default::default()
         }
@@ -431,10 +430,10 @@ impl Modularity {
     pub fn execute<T>(&mut self, graph: & Graph<T>) -> (f64, f64){
 
         let mut structure = CommunityStructure::new( & graph, self );
-        let mut comStructure : Vec<usize>= vec![0; graph.node_count()];
+        let mut communities : Vec<i32>= vec![0; graph.node_count()];
 
         if graph.node_count() > 0 {
-            let (modularity, modularityResolution) = self.computeModularity(graph, &mut structure, &mut comStructure);
+            let (modularity, modularityResolution) = self.computeModularity(graph, &mut structure, &mut communities);
             self.modularity = modularity;
             self.modularityResolution = modularityResolution;
         } else {
@@ -442,11 +441,12 @@ impl Modularity {
             self.modularityResolution = 0.0;
         }
         // saveValues(comStructure, graph, structure);
-        self.communityByNode = comStructure;
+        self.communityByNode = communities;
+
         (self.modularity, self.modularityResolution)
     }
 
-    fn computeModularity<T>(&mut self, graph: & Graph<T>, cs : &mut CommunityStructure, comStructure: &mut Vec<usize>) -> (f64, f64) {
+    fn computeModularity<T>(&mut self, graph: & Graph<T>, cs : &mut CommunityStructure, communities: &mut Vec<i32>) -> (f64, f64) {
 
         let nodeDegrees = cs.weights.clone();
         let totalWeight = cs.graphWeightSum;
@@ -480,29 +480,37 @@ impl Modularity {
                 // println!("Zooming Out: {} communities left", cs.N);
             }
         }
-        self.fillComStructure(cs, comStructure);
-        let degreeCount = self.fillDegreeCount(graph, cs, comStructure, & nodeDegrees);
+        let mut comStructure : Vec<usize>= vec![0; graph.node_count()];
+        let noiseMap = self.fillComStructure(cs, &mut comStructure);
+        let degreeCount = self.fillDegreeCount(graph, cs, &mut comStructure, & nodeDegrees);
 
-        let computedModularity = self.finalQ(comStructure, & degreeCount, graph, totalWeight, 1.);
-        let computedModularityResolution = self.finalQ(comStructure, & degreeCount, graph, totalWeight, self.resolution);
+        let computedModularity = self.finalQ(&mut comStructure, & degreeCount, graph, totalWeight, 1.);
+        let computedModularityResolution = self.finalQ(&mut comStructure, & degreeCount, graph, totalWeight, self.resolution);
 
+        for i in 0..communities.len() {
+            communities[i] = if noiseMap[i] { -1 } else { comStructure[i] as i32 }
+        }
         // let communities: Vec<&Community> = cs.communities.iter().map(|c| self.cc.get(c).unwrap()).collect();
         // println!("{:?}", comStructure);
        
         (computedModularity, computedModularityResolution)
     }
 
-    fn fillComStructure(&self, cs : & CommunityStructure, comStructure: &mut Vec<usize>) {
+    fn fillComStructure(&self, cs : & CommunityStructure, comStructure: &mut Vec<usize>) -> Vec<bool> {
+        let mut noiseMap: Vec<bool> = vec![false; comStructure.len()];
         for (count, com_id) in cs.communities.iter().enumerate() {
             let com = self.cc.get(com_id).unwrap();
             for node in & com.nodes {
                 let hidden_id = cs.invMap.get(node).unwrap();
                 let hidden = self.cc.get(hidden_id).unwrap();
+                let isNoise = hidden.nodes.len() as u32 <= self.noise;
                 for nodeInt in & hidden.nodes {
                     comStructure[* nodeInt] = count;
+                    noiseMap[* nodeInt] = isNoise;
                 }
             }
         }
+        noiseMap
     }
 
     fn fillDegreeCount<T>(&self, graph: & Graph<T>, cs : & CommunityStructure,
