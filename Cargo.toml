@@ -14,3 +14,5 @@ rand = "0.5"
 petgraph = "0.4"
 fnv = "1"
 slotmap = {version = "0.3", features = ["unstable"]}
+
+getopts = "0.2"

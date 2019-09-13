@@ -10,8 +10,9 @@ use petgraph::graph::{NodeIndex};
 
 use louvain::{Modularity};
 use louvain::io::{Node, NodeID, Edge, Community, read_json_file, write_json_file};
+use std::{thread, time};
 
-fn main() { 
+fn main() {
     let mut start_time = chrono::Utc::now();
     // println!("Reading files...");
     // let nodes: Vec<Node> = read_json_file("../miserables_nodes.json");
@@ -23,9 +24,16 @@ fn main() {
     let edges: Vec<Edge> = read_json_file(&args[2]);
     println!("Read links {}", chrono::Utc::now().signed_duration_since(start_time));
 
+    let ten_sec = time::Duration::from_millis(100000);
+    thread::sleep(ten_sec);
+
     let resolution : f64 = match args.get(3) {
         Some(res) => res.parse().expect("Resolution should be a float. Default = 1.0"),
         None => 1.0
+    };
+    let noise : u32 = match args.get(4) {
+        Some(res) => res.parse().expect("Noise should be a u32. Default = 1"),
+        None => 1
     };
     //compute_louvain( &nodes, &edges);
     println!("Nodes: {}", nodes.len());
@@ -54,12 +62,12 @@ fn main() {
 
 
     start_time = chrono::Utc::now();
-    let mut modularity = Modularity::new(resolution);
+    let mut modularity = Modularity::new(resolution, noise);
     let results = modularity.execute(& graph);
     println!("Louvain Clusters computed in {}", chrono::Utc::now().signed_duration_since(start_time));
 
     start_time = chrono::Utc::now();
-    let num_of_communities = modularity.communityByNode.iter().max().unwrap_or(&0) + 2; // Parent Community included
+    let num_of_communities = *modularity.communityByNode.iter().max().unwrap_or(&0) as usize + 2; // Parent Community included
     println!("Number of Clusters: {} -  with resolution {}", num_of_communities-1, resolution);
     println!("Final Modularity: {:?}", results);
     let mut communities: Vec<Community> = vec![Default::default(); num_of_communities];
@@ -71,7 +79,7 @@ fn main() {
     };
 
     for (node, &com_id) in modularity.communityByNode.iter().enumerate() {
-        let com = com_id + 1;
+        let com = (com_id + 1) as usize;
         communities[com].id = (com) as i32;
         communities[com].parent = 0;
         communities[com].nodes.push(node);
@@ -81,4 +89,5 @@ fn main() {
 
     write_json_file("communities.json", &communities);
     println!("Written communities {}", chrono::Utc::now().signed_duration_since(start_time));
+
 }
