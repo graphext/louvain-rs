@@ -349,7 +349,7 @@ impl CommunityStructure {
                     let oldHidden = cc.get(& self.invMap.get(&nodeInt).unwrap()).unwrap();
                     oldHidden.nodes.clone()
                 };
-                let mut hidden = cc.get_mut(& hidden_id).unwrap();
+                let hidden = cc.get_mut(& hidden_id).unwrap();
                 hidden.nodes.extend(oldHiddenNodes);
             }
 

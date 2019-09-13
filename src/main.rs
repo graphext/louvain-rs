@@ -1,37 +1,69 @@
-extern crate petgraph;
-extern crate chrono;
-extern crate louvain;
-
-use std::env;
 use std::collections::{HashMap};
 
 use petgraph::{Graph};
 use petgraph::graph::{NodeIndex};
+use clap::{Arg, App};
+
+use serde_json::{Value};
 
 use louvain::{Modularity};
-use louvain::io::{Node, NodeID, Edge, Community, read_json_file, write_json_file};
-use std::{thread, time};
+use louvain::io::{Node, NodeID, Edge, read_json_file, write_json_file};
 
 fn main() {
     let mut start_time = chrono::Utc::now();
-    // println!("Reading files...");
-    // let nodes: Vec<Node> = read_json_file("../miserables_nodes.json");
-    // let edges: Vec<Edge> = read_json_file("../miserables_links.json");
-    let args : Vec<String> = env::args().collect();
-    let nodes: Vec<Node> = read_json_file(&args[1]);
+
+    let matches = App::new("Louvain")
+        .version("1.0")
+        .author("Juan Morales <crispamares@gmail.com>")
+        .about("Compute louvain clustering")
+        .arg(Arg::with_name("nodes")
+            .short("n")
+            .long("nodes")
+            .value_name("FILE")
+            .help("Sets the nodes input file")
+            .required(true)
+            .takes_value(true))
+        .arg(Arg::with_name("links")
+            .short("l")
+            .long("links")
+            .value_name("FILE")
+            .help("Sets the links input file")
+            .required(true)
+            .takes_value(true))
+        .arg(Arg::with_name("output")
+            .short("o")
+            .long("output")
+            .value_name("FILE")
+            .help("Sets the output nodes file")
+            .required(true)
+            .takes_value(true))
+        .arg(Arg::with_name("resolution")
+            .short("r")
+            .long("resolution")
+            .value_name("FLOAT")
+            .help("Sets the resolution. Higher this value the bigger the clusters")
+            .default_value("0.1")
+            .takes_value(true))
+        .arg(Arg::with_name("noise")
+            .long("noise")
+            .value_name("INT")
+            .help("Sets the minimum of nodes in a cluster to not be considered as noise")
+            .default_value("1")
+            .takes_value(true))
+        .get_matches();
+
+
+    let nodes: Vec<Node> = read_json_file(matches.value_of("nodes").unwrap());
     println!("Read nodes {}", chrono::Utc::now().signed_duration_since(start_time));
     start_time = chrono::Utc::now();
-    let edges: Vec<Edge> = read_json_file(&args[2]);
+    let edges: Vec<Edge> = read_json_file(matches.value_of("links").unwrap());
     println!("Read links {}", chrono::Utc::now().signed_duration_since(start_time));
-
-    let ten_sec = time::Duration::from_millis(100000);
-    thread::sleep(ten_sec);
-
-    let resolution : f64 = match args.get(3) {
+    
+    let resolution : f64 = match matches.value_of("resolution") {
         Some(res) => res.parse().expect("Resolution should be a float. Default = 1.0"),
         None => 1.0
     };
-    let noise : u32 = match args.get(4) {
+    let noise : u32 = match matches.value_of("noise") {
         Some(res) => res.parse().expect("Noise should be a u32. Default = 1"),
         None => 1
     };
@@ -70,24 +102,16 @@ fn main() {
     let num_of_communities = *modularity.communityByNode.iter().max().unwrap_or(&0) as usize + 2; // Parent Community included
     println!("Number of Clusters: {} -  with resolution {}", num_of_communities-1, resolution);
     println!("Final Modularity: {:?}", results);
-    let mut communities: Vec<Community> = vec![Default::default(); num_of_communities];
-    communities[0] = Community{
-        id:0,
-        parent:-1,
-        nodes: graph.node_indices().map(|i| i.index()).collect(),
-        children: (1.. num_of_communities as i32).collect()
-    };
 
-    for (node, &com_id) in modularity.communityByNode.iter().enumerate() {
-        let com = (com_id + 1) as usize;
-        communities[com].id = (com) as i32;
-        communities[com].parent = 0;
-        communities[com].nodes.push(node);
+    let mut all_nodes: Vec<Value> = read_json_file(matches.value_of("nodes").unwrap());
+    for (i, node) in all_nodes.iter_mut().enumerate() {
+        let map = node.as_object_mut().unwrap();
+        map.insert("_cluster".into(), modularity.communityByNode[i].into());
     }
+    println!("Read and modify nodes {}", chrono::Utc::now().signed_duration_since(start_time));
 
-    // println!("{:?}", communities);
-
-    write_json_file("communities.json", &communities);
-    println!("Written communities {}", chrono::Utc::now().signed_duration_since(start_time));
+    start_time = chrono::Utc::now();
+    write_json_file(matches.value_of("output").unwrap(), &all_nodes);
+    println!("Written output {}", chrono::Utc::now().signed_duration_since(start_time));
 
 }
