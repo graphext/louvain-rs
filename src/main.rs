@@ -4,7 +4,7 @@ use petgraph::{Graph};
 use petgraph::graph::{NodeIndex};
 use clap::{Arg, App};
 
-use serde_json::{Value};
+use serde_json::{Value, Map, json};
 
 use louvain::{Modularity};
 use louvain::io::{Node, NodeID, Edge, read_json_file, write_json_file};
@@ -29,6 +29,13 @@ fn main() {
             .value_name("FILE")
             .help("Sets the links input file")
             .required(true)
+            .takes_value(true))
+        .arg(Arg::with_name("columns")
+            .short("c")
+            .long("columns")
+            .value_name("FILE")
+            .help("Sets the columns metadata file. It will be modified to add _clusters")
+            .required(false)
             .takes_value(true))
         .arg(Arg::with_name("output")
             .short("o")
@@ -67,11 +74,8 @@ fn main() {
         Some(res) => res.parse().expect("Noise should be a u32. Default = 1"),
         None => 1
     };
-    //compute_louvain( &nodes, &edges);
     println!("Nodes: {}", nodes.len());
     println!("Edges: {}", edges.len());
-
-    //let graph = Graph {nodes: nodes, edges: edges};
 
     start_time = chrono::Utc::now();
     let mut inv_map: HashMap<NodeID, NodeIndex> = HashMap::new();
@@ -81,10 +85,6 @@ fn main() {
         inv_map.insert(node.id.clone(), i);
     }
     for edge in edges {
-        // match graph.find_edge(*inv_map.get(&edge.source).unwrap(), *inv_map.get(&edge.target).unwrap()) {
-        //     Some(e) => println!("----> There is a parallel edge!!! {:?} -> {:?}", *inv_map.get(&edge.source).unwrap(), *inv_map.get(&edge.target).unwrap()),
-        //     None => ()
-        // }
         graph.add_edge(
             *inv_map.get(&edge.source).unwrap(),
             *inv_map.get(&edge.target).unwrap(),
@@ -112,6 +112,22 @@ fn main() {
 
     start_time = chrono::Utc::now();
     write_json_file(matches.value_of("output").unwrap(), &all_nodes);
-    println!("Written output {}", chrono::Utc::now().signed_duration_since(start_time));
+    println!("Write output {}", chrono::Utc::now().signed_duration_since(start_time));
+
+    if let Some(column_file) = matches.value_of("columns") {
+        start_time = chrono::Utc::now();
+        let column_metadata = json!({
+            "type": "categorical",
+            "label": "Cluster",
+            "description": format!("Louvain cluster, resolution: {}, noise: {}", resolution, noise),
+            "used": false,
+            "isSegmentation": true
+        });
+        let mut columns: Map<String, Value> = read_json_file(column_file);
+        columns.insert("_cluster".into(), column_metadata);
+        write_json_file(column_file, &columns);
+        println!("Modify columns {}", chrono::Utc::now().signed_duration_since(start_time));
+    }
+
 
 }
