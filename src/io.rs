@@ -34,7 +34,7 @@ pub struct Community {
     pub children: Vec<i32>,
 }
 
-pub fn read_json_file<T>(file_path: &str) -> Vec<T>
+pub fn read_json_file<T>(file_path: &str) -> T
     where T: serde::de::DeserializeOwned
 {
     let path = Path::new(file_path);
@@ -45,21 +45,18 @@ pub fn read_json_file<T>(file_path: &str) -> Vec<T>
         Ok(file) => file,
     };
 
-    let array: Vec<T> = serde_json::from_str(&s).unwrap();
-    
-    return array;
+    serde_json::from_str(&s).unwrap()
 }
 
-pub fn read_from_string<T>(string: &str) -> Vec<T>
+pub fn read_from_string<T>(string: &str) -> T
     where T: serde::de::DeserializeOwned
 {
-    let array: Vec<T> = serde_json::from_str(string).unwrap();
-    return array;
+    serde_json::from_str(string).unwrap()
 }
 
 
 
-pub fn write_json_file<T>(file_path: &str, array: &Vec<T>)
+pub fn write_json_file<T>(file_path: &str, data: &T)
     where T: serde::Serialize
 {
     let path = Path::new(file_path);
@@ -69,5 +66,5 @@ pub fn write_json_file<T>(file_path: &str, array: &Vec<T>)
         Ok(file) => file,
     };
 
-    serde_json::to_writer(file, array).unwrap();
+    serde_json::to_writer(file, data).unwrap();
 }
