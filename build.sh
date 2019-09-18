@@ -3,8 +3,7 @@
 #   docker run -it --rm -v "`pwd`":/hostdata:cached rust:1.37-slim-stretch sh
 #
 rustup target add x86_64-unknown-linux-musl
-cd /hostdata
 cargo build --release --target=x86_64-unknown-linux-musl
 echo "---------------------------------------------------------------------------"
-echo "The output is in /hostdata/target/x86_64-unknown-linux-musl/release/louvain"
+echo "The output is in target/x86_64-unknown-linux-musl/release/louvain"
 echo "---------------------------------------------------------------------------"
