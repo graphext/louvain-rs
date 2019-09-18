@@ -9,7 +9,7 @@ use rand::{thread_rng, seq};
 use petgraph::{Graph as PetGraph, Undirected};
 use petgraph::graph::{NodeIndex, EdgeIndex};
 use petgraph::visit::EdgeRef;
-use slotmap::SlotMap;
+use slotmap::DenseSlotMap;
 use std::f32;
 
 type Graph<T> = PetGraph<T, f32, Undirected, u32>;
@@ -89,7 +89,7 @@ impl Community {
 
 #[derive(Default, Debug)]
 pub struct CommunityCatalog {
-    map: SlotMap<CommunityId, Community>
+    map: DenseSlotMap<CommunityId, Community>
 }
 
 impl CommunityCatalog {
