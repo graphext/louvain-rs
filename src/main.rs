@@ -49,7 +49,7 @@ fn main() {
             .long("resolution")
             .value_name("FLOAT")
             .help("Sets the resolution. Higher this value the bigger the clusters")
-            .default_value("0.1")
+            .default_value("1.0")
             .takes_value(true))
         .arg(Arg::with_name("noise")
             .long("noise")
