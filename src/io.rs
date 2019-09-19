@@ -4,6 +4,7 @@ use std::path::Path;
 use std::io::Read;
 use std::fs::File;
 use std::error::Error;
+use std::io::BufWriter;
 
 pub type NodeID = u32;
 
@@ -65,6 +66,7 @@ pub fn write_json_file<T>(file_path: &str, data: &T)
         Err(why) => panic!("couldn't create {}: {}", path.display(), why.description()),
         Ok(file) => file,
     };
+    let writer = BufWriter::new(file);
 
-    serde_json::to_writer(file, data).unwrap();
+    serde_json::to_writer(writer, data).unwrap();
 }
