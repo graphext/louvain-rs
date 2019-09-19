@@ -1,10 +1,9 @@
 use serde;
 use serde_json;
 use std::path::Path;
-use std::io::Read;
 use std::fs::File;
 use std::error::Error;
-use std::io::BufWriter;
+use std::io::{BufWriter, BufReader};
 
 pub type NodeID = u32;
 
@@ -40,13 +39,13 @@ pub fn read_json_file<T>(file_path: &str) -> T
 {
     let path = Path::new(file_path);
 
-    let mut s = String::new();
-    match File::open(&path).unwrap().read_to_string(&mut s) {
+    let file = match File::open(&path) {
         Err(why) => panic!("couldn't open {}: {}", path.display(), why.description()),
         Ok(file) => file,
     };
+    let reader = BufReader::new(file);
 
-    serde_json::from_str(&s).unwrap()
+    serde_json::from_reader(reader).unwrap()
 }
 
 pub fn read_from_string<T>(string: &str) -> T
