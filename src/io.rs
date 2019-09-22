@@ -10,6 +10,7 @@ pub type NodeID = u32;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Node {
     pub id: NodeID,
+    #[serde(skip_deserializing)]
     community: Option<CommunityTag>,
 }
 
