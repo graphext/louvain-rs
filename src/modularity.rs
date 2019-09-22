@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]  // FIXME: Good while porting
 
-use std::collections::{HashSet}; // , BTreeMap as HashMap};
-use fnv::{FnvHashMap as HashMap};
+use std::collections::{HashSet, BTreeMap};
 use std::cell::{RefCell};
 use std::iter::FromIterator;
 use std::ops::{AddAssign};
@@ -51,8 +50,8 @@ pub struct Community {
     id: CommunityId,
     weightSum: f64,
     nodes: Vec<usize>,
-    connectionsWeight: RefCell<HashMap<CommunityId, f32>>,
-    connectionsCount: RefCell<HashMap<CommunityId, i32>>,
+    connectionsWeight: RefCell<BTreeMap<CommunityId, f32>>,
+    connectionsCount: RefCell<BTreeMap<CommunityId, i32>>,
 }
 
 impl Community {
@@ -118,13 +117,13 @@ impl CommunityCatalog {
 pub struct CommunityStructure {
     N: usize,                                              // Number of nodes / communities
     communities: Vec<CommunityId>,                         // Direct communities
-    nodeConnectionsWeight: Vec<HashMap<CommunityId, f32>>, 
-    nodeConnectionsCount: Vec<HashMap<CommunityId, i32>>,  
+    nodeConnectionsWeight: Vec<BTreeMap<CommunityId, f32>>, 
+    nodeConnectionsCount: Vec<BTreeMap<CommunityId, i32>>,  
     nodeCommunities: Vec<CommunityId>,                     
     weights: Vec<f64>,                                     // One per node
     topology: Vec<Vec<ModEdge>>,                           // One per node
-    //map: HashMap<NodeIndex, usize>,
-    invMap: HashMap<usize, CommunityId>,
+    //map: BTreeMap<NodeIndex, usize>,
+    invMap: BTreeMap<usize, CommunityId>,
     graphWeightSum: f64,
 }
 
@@ -141,8 +140,8 @@ impl CommunityStructure {
             nodeCommunities: Vec::with_capacity(N),
             weights: Vec::with_capacity(N),
             topology: Vec::with_capacity(N),
-            //map: HashMap::default(),
-            invMap: HashMap::default(),
+            //map: BTreeMap::default(),
+            invMap: BTreeMap::default(),
             graphWeightSum: 0.0,
         };
 
@@ -153,8 +152,8 @@ impl CommunityStructure {
             //cs.map.insert(node.clone(), index);
             cs.nodeCommunities.push( cc.createNew() );
 
-            cs.nodeConnectionsWeight.push(HashMap::default());
-            cs.nodeConnectionsCount.push(HashMap::default());
+            cs.nodeConnectionsWeight.push(BTreeMap::default());
+            cs.nodeConnectionsCount.push(BTreeMap::default());
             cs.weights.push(0.0);
             cc.get_mut(& cs.nodeCommunities[index]).unwrap().seed(index, & cs);
 
@@ -213,7 +212,7 @@ impl CommunityStructure {
     fn addNodeTo(&mut self, node : usize, com_id: CommunityId, cc: &mut CommunityCatalog) {
 
         #[inline]
-        fn add_node<V:AddAssign + Copy + From<u8> >(map : &mut HashMap<CommunityId,V>, key: CommunityId, weight: V) {
+        fn add_node<V:AddAssign + Copy + From<u8> >(map : &mut BTreeMap<CommunityId,V>, key: CommunityId, weight: V) {
             let w = map.entry(key).or_insert(V::from(0));
             *w += weight;
         }
@@ -254,8 +253,8 @@ impl CommunityStructure {
     pub fn removeNodeFromItsCommunity(&mut self, node: usize, cc: &mut CommunityCatalog) {
 
         #[inline]
-        fn remove_node( weights_map : &mut HashMap<CommunityId,f32>,
-            count_map : &mut HashMap<CommunityId,i32>,
+        fn remove_node( weights_map : &mut BTreeMap<CommunityId,f32>,
+            count_map : &mut BTreeMap<CommunityId,i32>,
             key: CommunityId, weight: f32
         )
         {
@@ -326,13 +325,13 @@ impl CommunityStructure {
         let mut newTopology: Vec<Vec<ModEdge>> = Vec::with_capacity(M);
         let mut index : usize = 0;
         let mut nodeCommunities: Vec<CommunityId> = Vec::with_capacity(M);
-        let mut nodeConnectionsWeight: Vec<HashMap<CommunityId, f32>> = Vec::with_capacity(M);
-        let mut nodeConnectionsCount: Vec<HashMap<CommunityId, i32>> = Vec::with_capacity(M);
-        let mut newInvMap: HashMap<usize, CommunityId> = HashMap::default();
+        let mut nodeConnectionsWeight: Vec<BTreeMap<CommunityId, f32>> = Vec::with_capacity(M);
+        let mut nodeConnectionsCount: Vec<BTreeMap<CommunityId, i32>> = Vec::with_capacity(M);
+        let mut newInvMap: BTreeMap<usize, CommunityId> = BTreeMap::default();
 
         for com_id in & self.communities {
-            nodeConnectionsWeight.push(HashMap::default());
-            nodeConnectionsCount.push(HashMap::default());
+            nodeConnectionsWeight.push(BTreeMap::default());
+            nodeConnectionsCount.push(BTreeMap::default());
 
             newTopology.push( Vec::new() );
             nodeCommunities.push(cc.createNew());
@@ -464,8 +463,7 @@ impl Modularity {
                 }
                 for step in 0..cs.N {
                     let i = (step + start) % cs.N;
-                    let resolution = self.resolution;
-                    if let Some(bestCommunity) = self.updateBestCommunity(cs, i, resolution) {
+                    if let Some(bestCommunity) = self.updateBestCommunity(cs, i, self.resolution) {
                         if cs.nodeCommunities[i] != bestCommunity {
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
