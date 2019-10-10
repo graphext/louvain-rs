@@ -57,8 +57,25 @@ fn main() {
             .help("Sets the minimum of nodes in a cluster to not be considered as noise")
             .default_value("1")
             .takes_value(true))
+        .arg(Arg::with_name("exclusive")
+            .short("x")
+            .long("exclusive")
+            .requires("columns")
+            .help("Skip the execution if there is a column which is a Segmentation")
+            .takes_value(false))
         .get_matches();
 
+    if matches.is_present("exclusive") {
+        let column_file = matches.value_of("columns").unwrap();
+        let columns: Map<String, Value> = read_json_file(column_file);
+        for (column, value) in columns.iter() {
+            let is_segmentation = &value["isSegmentation"];
+            if is_segmentation.as_bool().unwrap_or(false) {
+                println!("SKIP EXECUTION!: '{}' is Segmentation", column);
+                return;
+            }
+        }
+    }
 
     let nodes: Vec<Node> = read_json_file(matches.value_of("nodes").unwrap());
     println!("Read nodes {}", chrono::Utc::now().signed_duration_since(start_time));
