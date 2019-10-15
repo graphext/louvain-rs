@@ -102,10 +102,16 @@ fn main() {
         inv_map.insert(node.id.clone(), i);
     }
     for edge in edges {
-        graph.add_edge(
-            *inv_map.get(&edge.source).unwrap(),
-            *inv_map.get(&edge.target).unwrap(),
-            edge.weight);
+        let a = *inv_map.get(&edge.source).unwrap();
+        let b = *inv_map.get(&edge.target).unwrap();
+        if let Some(edge_idx) = graph.find_edge(a, b) {
+            println!("---- Parallel edge !!!! ---- {:?}, {:?}", a, b);
+            let weight = graph[edge_idx];
+            graph.update_edge(a, b, weight + edge.weight);
+        }
+        else {
+            graph.add_edge(a, b, edge.weight);
+        }
     }
     println!("Construct the graph computed in {}", chrono::Utc::now().signed_duration_since(start_time));
 

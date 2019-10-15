@@ -1,8 +1,7 @@
 #![allow(non_snake_case)]  // FIXME: Good while porting
 
-use std::collections::{HashSet, BTreeMap};
+use std::collections::{BTreeMap};
 use std::cell::{RefCell};
-use std::iter::FromIterator;
 use std::ops::{AddAssign};
 use rand::{thread_rng, seq};
 use petgraph::{Graph as PetGraph, Undirected};
@@ -15,23 +14,12 @@ type Graph<T> = PetGraph<T, f32, Undirected, u32>;
 
 trait EasyGraph {
     fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex;
-    fn getParallelEdges(&self, node: NodeIndex, neighbor: NodeIndex) -> Vec<&f32>;
 }
 
 impl<T> EasyGraph for Graph<T> {
     fn opposite(&self, node: NodeIndex, edge :EdgeIndex) -> NodeIndex {
         let (a, b) = self.edge_endpoints(edge).unwrap();
         if a == node { b } else { a }
-    }
-
-    fn getParallelEdges(&self, node: NodeIndex, neighbor: NodeIndex) -> Vec<&f32> {
-        let mut weights = vec![];
-        for edge in self.edges(node) {
-            if edge.target() == neighbor {
-                weights.push(edge.weight());
-            }
-        }
-        weights
     }
 }
 
@@ -144,7 +132,6 @@ impl CommunityStructure {
             invMap: BTreeMap::default(),
             graphWeightSum: 0.0,
         };
-
         let mut index: usize = 0;
         // Create one community and one inverse community per node
         // All weights to 0.0
@@ -167,21 +154,16 @@ impl CommunityStructure {
         }
 
         for node in graph.node_indices() {
-            //let node_index = cs.map.get(&node).unwrap();
 
             cs.topology.push(Vec::new());
 
-            let uniqueNeighbors : HashSet<NodeIndex> = HashSet::from_iter(graph.neighbors(node));
-            for neighbor in uniqueNeighbors {
+            for edge in graph.edges(node) {
+                let neighbor = edge.target();
                 if node == neighbor { continue }
-                //let neighbor_index = cs.map.get(& neighbor).unwrap();
 
-                //Sum all parallel edges weight:
-                let mut weight : f32  = 0.0;
-                for &w in graph.getParallelEdges(node, neighbor) {
-                    weight += if modularity.useWeight {w} else {1.0};
-                }
-
+                // Assume there is no parallel edges:
+                let weight: f32 = *edge.weight();
+                
                 //Finally add a single edge with the summed weight of all parallel edges:
                 cs.weights[node.index()] += weight as f64;
                 let modularity_edge = ModEdge {source: node.index(), target: neighbor.index(), weight: weight};
@@ -454,6 +436,7 @@ impl Modularity {
         while someChange {
             someChange = false;
             let mut localChange = true;
+            let mut movedNodes: u32 = 0;
             while localChange {
                 localChange = false;
                 let mut start: usize = 0;
@@ -467,15 +450,19 @@ impl Modularity {
                         if cs.nodeCommunities[i] != bestCommunity {
                             cs.moveNodeTo(i, bestCommunity, &mut self.cc);
                             localChange = true;
+                            movedNodes += 1;
                         }
+                    }
+                    if (step % 10000) == 0 {
+                        println!("Step {} of {} -> moved nodes: {}", step, cs.N, movedNodes);
                     }
                 }
                 someChange = localChange || someChange;
-                //println!("localChange: {}", localChange);
+                println!("Node Pass Ended -> moved nodes: {}", movedNodes);
             }
             if someChange {
                 cs.zoomOut(&mut self.cc);
-                // println!("Zooming Out: {} communities left", cs.N);
+                println!("Zooming Out: {} communities left", cs.N);
             }
         }
         let mut comStructure : Vec<usize>= vec![0; graph.node_count()];
