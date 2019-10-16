@@ -1,4 +1,5 @@
 use std::collections::{HashMap};
+use std::path::{Path};
 
 use petgraph::{Graph};
 use petgraph::graph::{NodeIndex};
@@ -34,7 +35,7 @@ fn main() {
             .short("c")
             .long("columns")
             .value_name("FILE")
-            .help("Sets the columns metadata file. It will be modified to add _clusters")
+            .help("Sets the columns metadata file. It will be modified to add cluster column")
             .required(false)
             .takes_value(true))
         .arg(Arg::with_name("output")
@@ -56,6 +57,11 @@ fn main() {
             .value_name("INT")
             .help("Sets the minimum of nodes in a cluster to not be considered as noise")
             .default_value("1")
+            .takes_value(true))
+        .arg(Arg::with_name("name")
+            .long("name")
+            .help("Sets the name of the column to be created")
+            .default_value("_cluster")
             .takes_value(true))
         .arg(Arg::with_name("exclusive")
             .short("x")
@@ -126,10 +132,12 @@ fn main() {
     println!("Number of Clusters: {} -  with resolution {}", num_of_communities-1, resolution);
     println!("Final Modularity: {:?}", results);
 
+    let column_name = matches.value_of("name").unwrap();
+
     let mut all_nodes: Vec<Value> = read_json_file(matches.value_of("nodes").unwrap());
     for (i, node) in all_nodes.iter_mut().enumerate() {
         let map = node.as_object_mut().unwrap();
-        map.insert("_cluster".into(), modularity.communityByNode[i].into());
+        map.insert(column_name.into(), modularity.communityByNode[i].into());
     }
     println!("Read and modify nodes {}", chrono::Utc::now().signed_duration_since(start_time));
 
@@ -144,10 +152,19 @@ fn main() {
             "label": "Cluster",
             "description": format!("Louvain cluster, resolution: {}, noise: {}", resolution, noise),
             "used": false,
-            "isSegmentation": true
+            "isSegmentation": true,
+            "labelStrategy": {
+                "kind": "sequential",
+                "prefix": "Cluster "
+            }
         });
-        let mut columns: Map<String, Value> = read_json_file(column_file);
-        columns.insert("_cluster".into(), column_metadata);
+        let mut columns: Map<String, Value> = if Path::new(column_file).is_file() {
+            read_json_file(column_file)
+        }
+        else {
+            Map::new()
+        };
+        columns.insert(column_name.into(), column_metadata);
         write_json_file(column_file, &columns);
         println!("Modify columns {}", chrono::Utc::now().signed_duration_since(start_time));
     }
