@@ -111,7 +111,6 @@ fn main() {
         let a = *inv_map.get(&edge.source).unwrap();
         let b = *inv_map.get(&edge.target).unwrap();
         if let Some(edge_idx) = graph.find_edge(a, b) {
-            println!("---- Parallel edge !!!! ---- {:?}, {:?}", a, b);
             let weight = graph[edge_idx];
             graph.update_edge(a, b, weight + edge.weight);
         }
