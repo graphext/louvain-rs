@@ -2,7 +2,6 @@ use serde;
 use serde_json;
 use std::path::Path;
 use std::fs::File;
-use std::error::Error;
 use std::io::{BufWriter, BufReader};
 
 pub type NodeID = u32;
@@ -14,6 +13,7 @@ pub struct Node {
     community: Option<CommunityTag>,
 }
 
+#[repr(C)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Edge {
     pub source: NodeID,
@@ -41,7 +41,7 @@ pub fn read_json_file<T>(file_path: &str) -> T
     let path = Path::new(file_path);
 
     let file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", path.display(), why.description()),
+        Err(why) => panic!("couldn't open {}: {}", path.display(), why),
         Ok(file) => file,
     };
     let reader = BufReader::new(file);
@@ -63,7 +63,7 @@ pub fn write_json_file<T>(file_path: &str, data: &T)
     let path = Path::new(file_path);
 
     let file = match File::create(&path) {
-        Err(why) => panic!("couldn't create {}: {}", path.display(), why.description()),
+        Err(why) => panic!("couldn't create {}: {}", path.display(), why),
         Ok(file) => file,
     };
     let writer = BufWriter::new(file);

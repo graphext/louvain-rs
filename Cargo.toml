@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Juan Morales <crispamares@gmail.com>"]
 edition = "2018"
 
+[lib]
+name = "louvain"
+path = "src/lib.rs"
+crate-type = ["lib", "staticlib", "cdylib"]
+
 [dependencies]
 chrono = "0.4"
 

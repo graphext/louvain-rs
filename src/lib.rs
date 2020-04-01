@@ -11,3 +11,5 @@ pub mod modularity;
 pub use self::modularity::Modularity;
 
 pub mod io;
+
+pub mod ffi;
