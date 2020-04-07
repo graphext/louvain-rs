@@ -1,0 +1,7 @@
+version: '3.5'
+services:
+  dev:
+    image: rust:1.42-slim-buster
+    working_dir: /src
+    volumes:
+     - .:/src
