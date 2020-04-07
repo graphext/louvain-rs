@@ -2,8 +2,7 @@
 # Execute this in the image: "rust:1.42-slim-stretch"
 #   docker run -it --rm -v "`pwd`":/hostdata:cached rust:1.42-slim-stretch sh
 #
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target=x86_64-unknown-linux-musl
+RUSTFLAGS="-C target-feature=-crt-static" cargo build --release
 echo "---------------------------------------------------------------------------"
-echo "The output is in target/x86_64-unknown-linux-musl/release/louvain"
+echo "The output is in target/release/louvain"
 echo "---------------------------------------------------------------------------"
